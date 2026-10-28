@@ -40,4 +40,26 @@ class MediaOrderTest {
         move.move(-1,listOf("a","c","d"))
         assertEquals(listOf("a","c","d"),move.ids(listOf("a","c","d","d")))
     }
+    @Test fun encryptedProviderCacheReopenAndRefreshKeepSavedIdsAndAppendNewOnes() {
+        val context=RuntimeEnvironment.getApplication()
+        val secret=javax.crypto.KeyGenerator.getInstance("AES").apply{init(256)}.generateKey()
+        val vault=CredentialVault(context){secret};vault.clear()
+        var refresh=false
+        val repo=ProviderRepository(vault){
+            if(refresh)"#EXTM3U\n#EXTINF:-1 group-title=\"News\",C\nhttps://example.test/c\n#EXTINF:-1 group-title=\"News\",A\nhttps://example.test/a\n#EXTINF:-1 group-title=\"News\",B\nhttps://example.test/b"
+            else "#EXTM3U\n#EXTINF:-1 group-title=\"News\",A\nhttps://example.test/a\n#EXTINF:-1 group-title=\"News\",B\nhttps://example.test/b"
+        }
+        val initial=repo.connect(ProviderLogin("Fixture","",m3uUrl="https://example.test/list"))
+        val prefs=prefs();val order=MediaOrder(prefs)
+        assertTrue(order.save(scope,initial.entries.reversed().map{it.id}))
+        fun names(snapshot:ProviderSnapshot):List<String>{
+            val byId=snapshot.entries.associateBy{it.id}
+            return MediaOrder(prefs).ids(scope,snapshot.entries.map{it.id}).map{byId[it]!!.name}
+        }
+        assertEquals(listOf("B","A"),names(ProviderRepository(vault).cached()!!))
+        refresh=true;assertEquals(listOf("B","A","C"),names(repo.refresh()))
+        assertEquals(listOf("B","A","C"),names(ProviderRepository(vault).cached()!!))
+        vault.clear()
+    }
+
 }

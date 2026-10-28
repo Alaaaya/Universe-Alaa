@@ -29,6 +29,76 @@ class ProviderUi(private val screen:UniverseScreen) {
     private var catOffset=0
     private var nextCatFocus:Int?=null
     private var nextCardFocus:Int?=null
+    private var categoryOnlyView=false
+    private val mediaOrder=MediaOrder(context.getSharedPreferences("media-order-v1",0))
+    private data class MoveTarget(val categoryRow:Boolean,val id:String)
+    private val moveRows=mutableMapOf<View,MoveTarget>()
+    private var moving:MediaMove?=null
+    private var movingCategories=false
+    private var heldOk:Int?=null
+    private var pendingMove:MoveTarget?=null
+    private var pendingClick:View?=null
+    private var longStarted=false
+    private val longOk=Runnable {
+        val target=pendingMove
+        if(heldOk!=null && target!=null && moving==null && pendingClick?.hasFocus()==true){
+            longStarted=true;beginMove(target)
+        }
+    }
+    private fun orderScope(categories:Boolean):List<String> {
+        val login=runCatching{repository.login()}.getOrNull()
+        // Credentials are used only as an in-memory scope input, then hashed by MediaOrder.
+        val account=org.json.JSONArray(listOf(login?.server,login?.username,login?.m3uUrl,
+            if(login==null)snapshot?.name else "")).toString()
+        return listOf(if(panelSelected)"panel" else "manual",account,mode,
+            if(categories)"categories" else "channels",if(categories)"" else category)
+    }
+    private fun <T> ordered(values:List<T>,categories:Boolean,id:(T)->String):List<T> {
+        val byId=values.associateBy(id)
+        val scope=orderScope(categories)
+        val ids=if(moving?.scope==scope)moving!!.ids(values.map(id)) else mediaOrder.ids(scope,values.map(id))
+        return ids.mapNotNull{byId[it]}
+    }
+    private fun allCategories()=ordered(listOf(MediaCategory("","All",mode),MediaCategory("favorites","Favorites",mode),MediaCategory("recent","Recently viewed",mode))+kindCategories(),true){it.id}
+    private fun moveIds(categories:Boolean)=if(categories)allCategories().map{it.id} else entries().map{it.id}
+    private fun bindMove(view:View,categories:Boolean,id:String) {
+        val target=MoveTarget(categories,id);moveRows[view]=target
+        view.setOnLongClickListener{longStarted=true;beginMove(target);true}
+        if(moving?.id==id && movingCategories==categories){
+            view.contentDescription="Moving "+view.contentDescription+". Up or Down to move, OK to save, Back to cancel."
+            (view as? TextView)?.let{it.text="↕ "+it.text}
+        }
+    }
+    private fun beginMove(target:MoveTarget){
+        if(moving!=null)return
+        movingCategories=target.categoryRow
+        moving=MediaMove(orderScope(target.categoryRow),target.id,moveIds(target.categoryRow))
+        renderMove()
+    }
+    private fun renderMove(){
+        val move=moving?:return
+        val at=moveIds(movingCategories).indexOf(move.id)
+        if(movingCategories){
+            if(at>=0){catOffset=catOffset.coerceIn(maxOf(0,at-9),at);nextCatFocus=at-catOffset}
+        }else if(at>=0){
+            offset=offset.coerceIn(maxOf(0,at-11),at);nextCardFocus=at-offset
+        }
+        browse(mode,categoryOnlyView)
+    }
+    private fun finishMove(save:Boolean){
+        val move=moving?:return
+        val categories=movingCategories
+        val focusId=move.id
+        if(save && !mediaOrder.save(move.scope,move.ids(moveIds(categories)))){
+            toast("Could not save order. Try again.");return
+        }
+        moving=null
+        val at=moveIds(categories).indexOf(focusId)
+        if(categories && at>=0){catOffset=catOffset.coerceIn(maxOf(0,at-9),at);nextCatFocus=at-catOffset}
+        else if(at>=0){offset=offset.coerceIn(maxOf(0,at-11),at);nextCardFocus=at-offset}
+        browse(mode,categoryOnlyView)
+    }
+    private fun clearMoveInput(){main.removeCallbacks(longOk);pendingMove=null;pendingClick=null;heldOk=null;longStarted=false}
     private var selected:MediaEntry?=null
     private var episodeList=emptyList<MediaEntry>()
     private var season=0
@@ -59,6 +129,7 @@ class ProviderUi(private val screen:UniverseScreen) {
             run{
                 val selectedNow=panel.ownsProvider
                 if(selectedNow || panelSelected){
+                    moving=null;clearMoveInput()
                     generation++;detailGeneration++;busy=false
                     panelSelected=selectedNow
                     snapshot=if(selectedNow)value else runCatching{manualRepository.cached()}.getOrNull()
@@ -172,6 +243,7 @@ class ProviderUi(private val screen:UniverseScreen) {
     fun requireConnection():Boolean {if(snapshot!=null)return true;loginDialog();return false}
     private val accent get()=when(screen.theme){"red"->0xffe50914.toInt();"gold"->0xffd8b602.toInt();else->0xff518df4.toInt()}
     private fun reset(){
+        moveRows.clear()
         pictures.forEach{com.bumptech.glide.Glide.with(context).clear(it)};pictures.clear()
         screen.removeAllViews()
         stage=Stage(context).also{it.theme=screen.theme;screen.addView(it,FrameLayout.LayoutParams(-1,-1))}
@@ -199,7 +271,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         text(title,800,30,1072,75,43f)
     }
     private fun kindCategories()=snapshot?.categories.orEmpty().filter{it.kind==mode}
-    private fun entries()=snapshot?.entries.orEmpty().filter{it.kind==mode&&when(category){"favorites"->identity(it) in favorites;"recent"->identity(it) in recents;""->true;else->it.categoryId==category}}
+    private fun entries()=ordered(snapshot?.entries.orEmpty().filter{it.kind==mode&&when(category){"favorites"->identity(it) in favorites;"recent"->identity(it) in recents;""->true;else->it.categoryId==category}},false){it.id}
     fun categories(){
         playback.stop();full=false;mode="live";category="";offset=0;catOffset=0
         browse("live",true)
@@ -208,15 +280,16 @@ class ProviderUi(private val screen:UniverseScreen) {
         full=false;detailGeneration++
         if(mode!=kind){category="";offset=0;catOffset=0}
         mode=kind
+        categoryOnlyView=categoryOnly
         if(kind!="live")playback.stop()
         reset();header(if(kind=="live")"Live TV" else if(kind=="movie")"Movies" else "Series")
-        val cats=listOf(MediaCategory("","All",kind),MediaCategory("favorites","Favorites",kind),MediaCategory("recent","Recently viewed",kind))+kindCategories()
+        val cats=allCategories()
         catOffset=catOffset.coerceIn(0,maxOf(0,cats.size-10))
         val catRows=cats.drop(catOffset).take(10).mapIndexed{i,c->
             button(c.name,30,160+i*76,if(categoryOnly)900 else 430,70){
                 category=c.id;offset=0
                 if(categoryOnly)screen.live() else browse(mode)
-            }.also{v->v.setOnKeyListener{_,key,event->
+            }.also{v->bindMove(v,true,c.id);v.setOnKeyListener{_,key,event->
                 if(event.action!=KeyEvent.ACTION_DOWN)false
                 else if(key==20&&i==9&&catOffset+10<cats.size){catOffset++;nextCatFocus=9;browse(mode,categoryOnly);true}
                 else if(key==19&&i==0&&catOffset>0){catOffset--;nextCatFocus=0;browse(mode,categoryOnly);true}
@@ -225,7 +298,8 @@ class ProviderUi(private val screen:UniverseScreen) {
         }
         if(categoryOnly){
             text(snapshot?.name.orEmpty(),1070,410,760,90,46f)
-            text("Choose a category to watch",1070,520,760,65)
+            text(if(moving!=null)"↑ ↓ Move   OK Save   BACK Cancel" else "Choose a category to watch",1070,520,800,65)
+            text("Hold OK to move a category",1070,620,760,65)
             focus(catRows.getOrNull(nextCatFocus?:0));nextCatFocus=null;return
         }
         currentList=entries();offset=offset.coerceIn(0,maxOf(0,currentList.size-1))
@@ -243,6 +317,7 @@ class ProviderUi(private val screen:UniverseScreen) {
                     else->screen.movieDetail()
                 }
             }.also{v->
+                if(live)bindMove(v,false,e.id)
                 if(!live){
                     text(e.name.take(1),x+14,y+28,w-28,265,60f).apply{gravity=Gravity.CENTER;setTextColor(accent)}
                     artwork(e,x+5,y+5,w-10,295)
@@ -278,7 +353,7 @@ class ProviderUi(private val screen:UniverseScreen) {
             playback.zap={delta->zap(delta)}
             open.nextFocusDownId=fav.id
         }
-        text("${if(currentList.isEmpty())0 else offset+1}–${offset+items.size} / ${currentList.size}     ↑ ↓ More items     BACK Home",490,1015,1380,45,24f)
+        text(if(moving!=null)"↑ ↓ Move   OK Save   BACK Cancel" else "${if(currentList.isEmpty())0 else offset+1}–${offset+items.size} / ${currentList.size}   Hold OK to move   BACK Home",490,1015,1380,45,24f)
         focus(if(nextCatFocus!=null)catRows.getOrNull(nextCatFocus!!) else cards.getOrNull((nextCardFocus?:0).coerceAtMost(cards.lastIndex.coerceAtLeast(0)))?:catRows.firstOrNull());nextCatFocus=null;nextCardFocus=null
     }
     private fun zap(delta:Int){
@@ -353,9 +428,50 @@ class ProviderUi(private val screen:UniverseScreen) {
     }
     fun key(event:KeyEvent):Boolean {
         if(panelSelected && !panel.tick())return true
+        val key=event.keyCode
+        val ok=key==KeyEvent.KEYCODE_DPAD_CENTER||key==KeyEvent.KEYCODE_ENTER||key==KeyEvent.KEYCODE_NUMPAD_ENTER
+        if(ok){
+            if(event.action==KeyEvent.ACTION_UP && heldOk==key){
+                val click=pendingClick
+                val activate=!longStarted && moving==null && !event.isCanceled && click?.hasFocus()==true
+                clearMoveInput()
+                if(activate)click?.performClick()
+                return true
+            }
+            if(event.action==KeyEvent.ACTION_DOWN){
+                if(heldOk!=null){
+                    if(!longStarted && event.isLongPress){main.removeCallbacks(longOk);longOk.run()}
+                    return true
+                }
+                if(moving!=null){
+                    heldOk=key;longStarted=true
+                    if(event.repeatCount==0)finishMove(true)
+                    return true
+                }
+                val view=screen.findFocus()
+                val target=moveRows[view]
+                if(target!=null){
+                    // A repeat without the initial down must not become a fresh click.
+                    heldOk=key;longStarted=event.repeatCount>0
+                    if(event.repeatCount==0){pendingMove=target;pendingClick=view;main.postDelayed(longOk,ViewConfiguration.getLongPressTimeout().toLong())}
+                    return true
+                }
+            }
+        }
+        if(moving!=null){
+            if(key==KeyEvent.KEYCODE_BACK){
+                if(event.action==KeyEvent.ACTION_UP && !event.isCanceled)finishMove(false)
+                return true
+            }
+            if(event.action==KeyEvent.ACTION_DOWN && (key==KeyEvent.KEYCODE_DPAD_UP||key==KeyEvent.KEYCODE_DPAD_DOWN)){
+                moving?.move(if(key==KeyEvent.KEYCODE_DPAD_DOWN)1 else -1,moveIds(movingCategories));renderMove()
+            }
+            return true
+        }
         return full&&playback.key(event)
     }
     fun back():Boolean{
+        if(moving!=null){clearMoveInput();finishMove(false);return true}
         if(full){full=false;if(mode=="live")browse(mode) else {playback.stop();if(mode=="series")renderEpisodes() else detail(false)};return true}
         return false
     }
@@ -363,6 +479,6 @@ class ProviderUi(private val screen:UniverseScreen) {
         if(panelSelected && !panel.tick())return
         playback.play(entry)
     }
-    fun stop(){foreground=false;main.removeCallbacks(panelTick);main.removeCallbacks(panelPoll);detailGeneration++;playback.stop();if(full){full=false;screen.home()}}
-    fun close(){closed=true;if(!testMode)panel.close();panelNetwork.shutdownNow();panelLoads.shutdownNow();main.removeCallbacks(panelTick);main.removeCallbacks(panelPoll);generation++;playback.stop();pictures.forEach{com.bumptech.glide.Glide.with(context).clear(it)};pictures.clear();worker.shutdownNow()}
+    fun stop(){moving=null;clearMoveInput();foreground=false;main.removeCallbacks(panelTick);main.removeCallbacks(panelPoll);detailGeneration++;playback.stop();if(full){full=false;screen.home()}}
+    fun close(){moving=null;clearMoveInput();closed=true;if(!testMode)panel.close();panelNetwork.shutdownNow();panelLoads.shutdownNow();main.removeCallbacks(panelTick);main.removeCallbacks(panelPoll);generation++;playback.stop();pictures.forEach{com.bumptech.glide.Glide.with(context).clear(it)};pictures.clear();worker.shutdownNow()}
 }
