@@ -72,7 +72,8 @@ class RealProviderTest {
   a.screen.homeTheme="classic";a.screen.categories();shot("categories")
   // Render only a small safe selection of real provider titles, not arbitrary adult metadata.
   val safeTitles=listOf("Toy Story","Interstellar","Finding Nemo","Zootopia","Ratatouille","Moana","Frozen","The Lion King")
-  val movies=snapshot.entries.filter{it.kind=="movie"&&safeTitles.any{t->it.name.contains(t,true)}}.distinctBy{it.name.substringAfter(" - ")}.take(10)
+  val movies=snapshot.entries.filter{it.kind=="movie"&&safeTitles.any{t->Regex("""^(?:[A-Z]{2,5} - )?"""+Regex.escape(t)+"""(?: \(\d{4}\))?$""",RegexOption.IGNORE_CASE).matches(it.name)}}.distinctBy{it.name.substringAfter(" - ")}.take(10)
+  assertTrue("Expected exact safe movie titles",movies.isNotEmpty())
   val safeLive=snapshot.entries.filter{it.kind=="live"&&it.name.contains("ZDF",true)}.take(30)
   val safeSeries=listOf(series)
   val safe=snapshot.copy(entries=safeLive+movies+safeSeries)
