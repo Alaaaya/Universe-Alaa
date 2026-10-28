@@ -82,7 +82,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
             icon(icons[i],x+65,650,140,140)
             button(s,x,827,270,70,29f){
                 homeIndex=i
-                if(i==0) categories() else if(i==4) themeDialog() else Toast.makeText(context,if(arabic)"غير متصل" else "Not connected",Toast.LENGTH_SHORT).show()
+                if(i==0) categories() else if(i==1) catalogue(false) else if(i==2) catalogue(true) else if(i==4) themeDialog() else Toast.makeText(context,if(arabic)"غير متصل" else "Not connected",Toast.LENGTH_SHORT).show()
             }.apply{contentDescription=s;gravity=Gravity.CENTER}
         }
         cards.forEachIndexed{i,v->v.nextFocusUpId=v.id;v.nextFocusDownId=v.id;v.nextFocusLeftId=cards[maxOf(0,i-1)].id;v.nextFocusRightId=cards[minOf(5,i+1)].id}
@@ -172,9 +172,69 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         text(if(arabic)"ⓘ اضغط مطوّلاً OK لتحريك القنوات" else "ⓘ Long press the \"OK\" button to move Channels",1020,930,850,66,27f)
         focus(rows.getOrNull(list.indexOf(channelFocus)-channelOffset)?:rows.firstOrNull()?:favorite)
     }
+
+    private var seriesMode=false
+    private var chosenTitle=0
+    private var chosenSeason=0
+    private val titles=listOf("The Last Horizon","Silent City","Northbound","Beyond the Tide","Golden Hour","The Archive","Night Train","Open Sky","The Crossing","Another Summer")
+    private fun poster(index:Int,x:Int,y:Int,w:Int,h:Int) {
+        stage.put(PosterArt(context,index,titles[index%titles.size]),x,y,w,h)
+    }
+    fun catalogue(series:Boolean) {
+        seriesMode=series;page=if(series)"series" else "movies";fullscreen=false;drawer=false;reset()
+        mark(35,35,90)
+        text("universe-Alaa",135,48,510,65,37f,accent)
+        text(if(series) {if(arabic)"المسلسلات" else "Series"} else {if(arabic)"الأفلام" else "Movies"},1430,42,440,84,58f)
+        val labels=if(arabic)listOf("الكل","المفضلة","شاهدت مؤخراً","عربي","ألماني","عالمي","دراما","عائلي") else listOf("All","Favorites","Recently Viewed","Arabic","German","International","Drama","Family")
+        val categories=labels.mapIndexed{i,label->button("  "+label,0,190+i*83,470,77,29f){catalogue(series)}}
+        chain(categories)
+        val cards=titles.mapIndexed{i,title->
+            val col=i%5;val row=i/5;val x=510+col*277;val y=183+row*423
+            val card=button("",x-5,y-5,253,404){chosenTitle=i;if(series)seriesDetail() else movieDetail()}
+            poster(i,x+5,y+5,233,333)
+            text(title,x,y+345,245,52,26f,textColor,true)
+            card
+        }
+        cards.forEachIndexed{i,v->
+            v.nextFocusLeftId=if(i%5==0)categories[0].id else cards[i-1].id
+            v.nextFocusRightId=if(i%5==4)v.id else cards[i+1].id
+            v.nextFocusUpId=if(i<5)v.id else cards[i-5].id
+            v.nextFocusDownId=if(i>=5)v.id else cards[i+5].id
+        }
+        categories.forEach{it.nextFocusRightId=cards.first().id}
+        text(if(arabic)"OK  التفاصيل     رجوع  الرئيسية" else "OK  Details       BACK  Home",520,1010,1250,42,24f)
+        focus(cards[chosenTitle])
+    }
+    fun movieDetail() {
+        page="movie-detail";reset()
+        text(titles[chosenTitle].uppercase(),288,65,1536,110,49f,accent,true).typeface=Typeface.DEFAULT_BOLD
+        poster(chosenTitle,288,216,480,702)
+        text(if(arabic)"حكاية رحلة غير متوقعة" else "A journey beyond the familiar",864,240,950,90,39f)
+        text(if(arabic)"فيلم من قائمة العرض التجريبية. لم يتم ربط مصدر للمشاهدة." else "An unexpected invitation brings two strangers together.\nA quiet journey becomes a search for home,\nand a chance to begin again.",864,355,930,220,30f).apply{maxLines=5;gravity=Gravity.TOP}
+        text("2026    •    Drama    •    1h 48m\nDirector  —\nCast  —",864,600,940,180,28f).apply{maxLines=4;gravity=Gravity.TOP}
+        val play=button(if(arabic)"تشغيل" else "Play Movie",864,833,300,77,30f){showFullscreen()}.apply{gravity=Gravity.CENTER}
+        val fav=button(if(arabic)"إضافة للمفضلة" else "Add to Favorites",1190,833,420,77,30f){Toast.makeText(context,"Added to Favorites",Toast.LENGTH_SHORT).show()}.apply{gravity=Gravity.CENTER}
+        play.nextFocusRightId=fav.id;fav.nextFocusLeftId=play.id;focus(play)
+    }
+    fun seriesDetail() {
+        page="series-detail";reset()
+        text(titles[chosenTitle],96,28,1728,70,45f,accent)
+        poster(chosenTitle,150,108,400,432)
+        text("2026   •   Drama   •   3 Seasons",96,570,540,70,27f)
+        text(if(arabic)"حكايات مترابطة ورحلة عبر ثلاث مواسم." else "Three seasons. One unfolding story.\nA collection of unexpected encounters,\nnew beginnings and distant horizons.",96,666,540,190,27f).apply{maxLines=5;gravity=Gravity.TOP}
+        val seasons=(0..2).map{i->button(if(arabic)"الموسم "+(i+1) else "Season "+(i+1),680,130+i*86,365,76,32f){chosenSeason=i;seriesDetail()}}
+        val eps=(0..8).map{i->button(if(arabic)"الحلقة "+(i+1) else String.format(Locale.US,"%02d   Episode %d",i+1,i+1),1070,130+i*86,750,76,30f){showFullscreen()}}
+        chain(seasons);chain(eps)
+        seasons.forEach{it.nextFocusRightId=eps[0].id}
+        eps.forEach{it.nextFocusLeftId=seasons[chosenSeason].id}
+        text(if(arabic)"OK  تشغيل الحلقة    رجوع  المسلسلات" else "OK  Play episode       BACK  Series",680,1000,1140,50,24f)
+        focus(seasons[chosenSeason])
+    }
     private fun showFullscreen(){fullscreen=true;reset();text(if(arabic)"لا يوجد بث متصل" else "No stream connected",400,450,1120,150,45f,textColor,true)}
     fun back():Boolean {
-        if(fullscreen){live();return true}
+        if(fullscreen){fullscreen=false;if(page=="series-detail")seriesDetail() else if(page=="movie-detail")movieDetail() else live();return true}
+        if(page=="movie-detail"||page=="series-detail"){catalogue(seriesMode);return true}
+        if(page=="movies"||page=="series"){home();return true}
         if(page=="live"){categories();return true}
         if(page=="categories"){home();return true}
         return false
