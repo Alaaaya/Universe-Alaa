@@ -5,7 +5,11 @@ import android.view.View
 class PrayerBackdrop(c:Context):View(c) {
  private val bitmap=BitmapFactory.decodeResource(resources,R.drawable.prayer_scenery)
  override fun onDraw(canvas:Canvas){
-  canvas.drawBitmap(bitmap,null,Rect(0,0,width,height),null)
+  val photoPaint=Paint(Paint.ANTI_ALIAS_FLAG)
+  val saturation=ColorMatrix().apply{setSaturation(1.3f)}
+  val contrast=ColorMatrix(floatArrayOf(1.12f,0f,0f,0f,-13f,0f,1.12f,0f,0f,-13f,0f,0f,1.12f,0f,-13f,0f,0f,0f,1f,0f))
+  saturation.postConcat(contrast);photoPaint.colorFilter=ColorMatrixColorFilter(saturation)
+  canvas.drawBitmap(bitmap,null,Rect(0,0,width,height),photoPaint)
   val p=Paint(Paint.ANTI_ALIAS_FLAG)
   p.shader=LinearGradient(0f,0f,0f,height.toFloat(),intArrayOf(0x5500081a,0x00000000,0x88000616.toInt()),null,Shader.TileMode.CLAMP)
   canvas.drawRect(0f,0f,width.toFloat(),height.toFloat(),p)
@@ -36,17 +40,16 @@ class MosqueArt(c:Context):View(c){
 class TileLight(c:Context,val tint:Int):View(c){
  override fun onDraw(c:Canvas){
   val p=Paint(Paint.ANTI_ALIAS_FLAG)
-  p.shader=RadialGradient(width*.5f,height*.5f,width*.5f,intArrayOf((tint and 0xffffff) or 0x88000000.toInt(),tint and 0xffffff),null,Shader.TileMode.CLAMP)
-  c.drawOval(0f,0f,width.toFloat(),height.toFloat(),p)
-  p.shader=LinearGradient(0f,0f,0f,height.toFloat(),intArrayOf((tint and 0xffffff) or 0x44000000,0),null,Shader.TileMode.CLAMP)
-  c.drawRoundRect(width*.16f,0f,width*.84f,height.toFloat(),15f,15f,p)
+  c.save();c.scale(1f,height.toFloat()/width)
+  p.shader=RadialGradient(width*.5f,width*.25f,width*.52f,intArrayOf((tint and 0xffffff) or 0xb0000000.toInt(),(tint and 0xffffff) or 0x55000000,tint and 0xffffff),floatArrayOf(0f,.4f,1f),Shader.TileMode.CLAMP)
+  c.drawRect(0f,0f,width.toFloat(),width.toFloat(),p);c.restore()
  }
 }
 
 class PrayerSymbol(c:Context,val index:Int):View(c){
  override fun onDraw(c:Canvas){
   c.save();c.scale(width/64f,height/40f)
-  val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0xffffdc8a.toInt();style=Paint.Style.STROKE;strokeWidth=2f}
+  val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0xffffe6a5.toInt();style=Paint.Style.STROKE;strokeWidth=2.4f;setShadowLayer(6f,0f,0f,0xffffbc42.toInt())}
   if(index==4){c.drawArc(20f,3f,45f,31f,45f,285f,false,p);c.drawArc(26f,0f,47f,25f,70f,170f,false,p)}
   else{
    c.drawCircle(30f,20f,9f,p)
@@ -77,5 +80,15 @@ class NeonRim(c:Context,val tint:Int):View(c){
   val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{style=Paint.Style.STROKE}
   for(i in 12 downTo 1){p.color=(tint and 0xffffff) or ((18-i)*3 shl 24);p.strokeWidth=i*2f;c.drawRoundRect(17f,17f,width-17f,height-17f,27f,27f,p)}
   p.color=tint;p.strokeWidth=3f;c.drawRoundRect(17f,17f,width-17f,height-17f,27f,27f,p)
+ }
+}
+
+class GlassContour(c:Context,val tint:Int,val radius:Float=32f):View(c){
+ override fun onDraw(c:Canvas){
+  val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{style=Paint.Style.STROKE}
+  for(i in 12 downTo 1){p.color=(tint and 0xffffff) or ((16-i)*4 shl 24);p.strokeWidth=i*1.7f
+   c.drawRoundRect(15f,15f,width-15f,height-15f,radius,radius,p)}
+  p.color=tint;p.strokeWidth=2f;c.drawRoundRect(15f,15f,width-15f,height-15f,radius,radius,p)
+  p.color=0xaae5faff.toInt();p.strokeWidth=1f;c.drawRoundRect(17f,17f,width-17f,height-17f,radius-2,radius-2,p)
  }
 }

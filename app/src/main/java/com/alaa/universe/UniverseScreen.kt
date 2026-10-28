@@ -103,7 +103,8 @@ class UniverseScreen(context:Context): FrameLayout(context) {
     private fun glass(color:Int,stroke:Int,radius:Float=24f)=surface(color,stroke).apply{cornerRadius=radius}
     private fun prayerHome(){
         stage.put(PrayerBackdrop(context),0,0,1920,1080)
-        stage.put(View(context).apply{background=glass(0xb215233a.toInt(),0x8875b5ed.toInt())},24,22,1872,176)
+        stage.put(GlassContour(context,0xff329fff.toInt(),35f),9,7,1902,206)
+        stage.put(View(context).apply{background=glass(0xd00b1429.toInt(),0xff59bfff.toInt(),35f)},24,22,1872,176)
         text("AP",49,52,100,105,48f,Color.WHITE,true).apply{background=glass(0x99465478.toInt(),0x6673a6c6);typeface=Typeface.DEFAULT_BOLD}
         text("Alaa",174,46,340,39,29f,Color.WHITE)
         val df=SimpleDateFormat("dd MMMM yyyy",Locale.ENGLISH).apply{timeZone=TimeZone.getTimeZone("Europe/Berlin")}
@@ -112,7 +113,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         text("(Days Left: —)",174,135,340,30,21f,Color.WHITE)
         text(fixedClock?:SimpleDateFormat("HH:mm",Locale.US).apply{timeZone=TimeZone.getTimeZone("Europe/Berlin")}.format(Date()),560,58,250,75,56f,Color.WHITE,true).typeface=Typeface.DEFAULT_BOLD
         text("—",560,133,250,28,25f,Color.WHITE,true)
-        stage.put(MosqueArt(context),819,43,200,130)
+        stage.put(MosqueArt(context),797,27,238,158)
         stage.put(View(context).apply{background=glass(0x440b1931,0xaa58c6ee.toInt(),20f)},1029,26,850,161)
         text("أوقات الصلاة",1045,27,800,28,24f,Color.WHITE,true)
         text("Mülheim - مسجد الرحمة",1045,56,800,25,20f,Color.WHITE,true)
@@ -120,7 +121,8 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         val names=listOf("الفجر","الظهر","العصر","المغرب","العشاء")
         for(i in 0..4){
             val x=1045+i*166
-            stage.put(View(context).apply{background=glass(if(state?.next==i)0x55137ca8 else 0x33090f24,if(state?.next==i)0xff36d5ff.toInt() else 0x226a87a7,16f)},x,82,156,99)
+            if(state?.next==i)stage.put(GlassContour(context,0xff23ddff.toInt(),23f),x-13,69,182,125)
+            stage.put(View(context).apply{background=glass(if(state?.next==i)0xb00d6995.toInt() else 0x33090f24,if(state?.next==i)0xff67ecff.toInt() else 0x226a87a7,23f)},x,82,156,99)
             stage.put(PrayerSymbol(context,i),x+49,84,58,33)
             text(names[i],x,115,156,28,20f,Color.WHITE,true)
             text(state?.values?.get(i)?:"--:--",x,146,156,30,26f,Color.WHITE,true)
@@ -141,18 +143,24 @@ class UniverseScreen(context:Context): FrameLayout(context) {
                 homeIndex=i;when(i){0->categories();1->catalogue(false);2->catalogue(true);4->themeDialog();else->Toast.makeText(context,"Not connected",Toast.LENGTH_SHORT).show()}
             }
             v.contentDescription=label
-            fun paint(f:Boolean){v.background=android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,intArrayOf((color and 0x00ffffff) or (if(f)0xaa000000.toInt() else 0x55000000),(color and 0x00ffffff) or 0x44000000)).apply{cornerRadius=26f;setStroke(if(f)5 else 2,if(f)color else (color and 0xffffff) or 0x99000000.toInt())}}
+            fun paint(f:Boolean){
+                val bright=if(f)0xff007aff.toInt() else color
+                val dark=android.graphics.Color.rgb((Color.red(bright)*.26f).toInt(),(Color.green(bright)*.26f).toInt(),(Color.blue(bright)*.26f).toInt())
+                v.background=android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,intArrayOf(bright,dark)).apply{cornerRadius=26f;setStroke(if(f)5 else 3,if(f)0xff70e5ff.toInt() else color)}
+            }
             paint(false);v.setOnFocusChangeListener{_,f->paint(f);rim.active=f;rim.invalidate()}
             stage.put(ImageView(context).apply{setImageResource(icons[i]);setColorFilter(Color.WHITE);alpha=.95f},x+82,604,123,123)
             text(label,x+7,762,273,62,29f,Color.WHITE,true).typeface=Typeface.DEFAULT_BOLD
-            stage.put(View(context).apply{background=glass(color,color,5f)},x+88,840,110,6)
-            stage.put(MirrorTile(context,icons[i],label,color),x,862,287,164)
+            stage.put(GlassContour(context,color,5f),x+68,821,150,43)
+            stage.put(View(context).apply{background=glass(color,color,5f)},x+88,840,110,7)
+
             // Color light reflections on the polished terrace.
             stage.put(View(context).apply{background=android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,intArrayOf((color and 0xffffff) or 0x44000000,0x00000000)).apply{cornerRadius=22f}},x+5,864,277,128)
             v
         }
         cards.forEachIndexed{i,v->v.nextFocusLeftId=cards[maxOf(0,i-1)].id;v.nextFocusRightId=cards[minOf(5,i+1)].id;v.nextFocusUpId=v.id;v.nextFocusDownId=v.id}
-        text("Playlist: "+context.getSharedPreferences("playlist",0).getString("name","Not connected"),105,996,430,64,26f,Color.WHITE,true).background=glass(0x99070d1d.toInt(),0x778f9fae,32f)
+        stage.put(GlassContour(context,0xff53bcff.toInt(),32f),40,980,510,94)
+        text("Playlist: "+context.getSharedPreferences("playlist",0).getString("name","Not connected"),105,996,430,64,26f,Color.WHITE,true).background=glass(0xd0091429.toInt(),0xff73ceff.toInt(),32f)
         for(j in 0..2){
             stage.put(View(context).apply{background=surface(Color.WHITE)},69,1011+j*13,5,3)
             stage.put(View(context).apply{background=surface(Color.WHITE)},80,1011+j*13,17,3)
