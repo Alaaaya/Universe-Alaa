@@ -43,7 +43,7 @@ class Stage(context: Context): ViewGroup(context) {
         c.save();c.scale(width/1920f,height/1080f)
         if(!waves) {
             p.style=Paint.Style.STROKE;p.strokeWidth=18f
-            for(i in 0..12){p.color=if(theme=="gold")0x103f3718 else 0x10477db7;c.drawOval(960f-180-i*90,370f-120-i*63,960f+180+i*90,370f+120+i*63,p)}
+            for(i in 0..12){p.color=if(theme=="gold")0x103f3718 else 0x08477db7;c.drawOval(960f-180-i*90,370f-120-i*63,960f+180+i*90,370f+120+i*63,p)}
         } else {
             p.style=Paint.Style.STROKE
             for(i in 0..40) {

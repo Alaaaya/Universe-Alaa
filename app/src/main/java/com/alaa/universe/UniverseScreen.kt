@@ -159,6 +159,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         val preview=button("",960,251,935,526){showFullscreen()}
         preview.background=surface(Color.BLACK)
         text(if(arabic)"لا يوجد بث متصل" else "No stream connected",1030,470,790,70,32f,0xff7f91a8.toInt(),true)
+        stage.put(View(context).apply{setBackgroundColor(0xff061426.toInt())},960,777,935,80)
         text(names[selectedChannel],978,787,750,70,31f).typeface=Typeface.DEFAULT_BOLD
         favorite=button(if(selectedChannel in favorites)"♥" else "♡",1775,787,110,70,47f){
             if(!favorites.add(selectedChannel))favorites.remove(selectedChannel);live()
