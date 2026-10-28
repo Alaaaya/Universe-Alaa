@@ -9,7 +9,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 class UniverseScreen(context:Context): FrameLayout(context) {
-    var theme="gold"
+    var theme="red"
     var arabic=false
     var fixedClock:String?=null
     var page="home";private set
@@ -28,8 +28,8 @@ class UniverseScreen(context:Context): FrameLayout(context) {
     private val groups=mutableListOf("All Channels","Favorites","Recently Viewed","AR | Alaa","AR | Cinema","AR | Sports","AR | Kids","DE | Germany","World","Documentaries")
     private val names=listOf("ALAA - ONE","ALAA - CINEMA","ALAA - WORLD","ALAA - TWO","ALAA - KIDS","ALAA - FIVE","ALAA - MAX","ALAA - CULTURE","ALAA - DRAMA","ALAA - ACTION","ALAA - MUSIC","ALAA - TRAVEL","ALAA - NATURE","ALAA - CLASSIC","ALAA - NEWS","ALAA - FAMILY")
     private lateinit var stage:Stage
-    private val accent get()=if(theme=="gold")0xffd8b602.toInt() else 0xff518df4.toInt()
-    private val textColor=0xffe2eaf6.toInt()
+    private val accent get()=when(theme){"red"->0xffe50914.toInt();"gold"->0xffd8b602.toInt();else->0xff518df4.toInt()}
+    private val textColor get()=if(theme=="red")Color.WHITE else 0xffe2eaf6.toInt()
     init {layoutDirection=View.LAYOUT_DIRECTION_LTR}
     private fun reset(wave:Boolean=false) {
         removeAllViews();stage=Stage(context).apply{theme=this@UniverseScreen.theme;waves=wave}
@@ -37,7 +37,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
     }
     private fun text(value:String,x:Int,y:Int,w:Int,h:Int,size:Float=28f,color:Int=textColor,center:Boolean=false):TextView {
         val v=TextView(context).apply{
-            text=value;setTextColor(color);gravity=if(center)Gravity.CENTER else Gravity.CENTER_VERTICAL
+            text=value;setTextColor(if(theme=="red" && color!=accent)Color.WHITE else color);gravity=if(center)Gravity.CENTER else Gravity.CENTER_VERTICAL
             typeface=Typeface.create("sans-serif",Typeface.NORMAL);includeFontPadding=false
             maxLines=1;ellipsize=TextUtils.TruncateAt.END;layoutDirection=View.LAYOUT_DIRECTION_LTR
             textDirection=View.TEXT_DIRECTION_FIRST_STRONG
@@ -47,8 +47,8 @@ class UniverseScreen(context:Context): FrameLayout(context) {
     private fun button(value:String,x:Int,y:Int,w:Int,h:Int,size:Float=28f,action:()->Unit):TextView =
         text(value,x,y,w,h,size).apply{
             id=View.generateViewId();isFocusable=true;isFocusableInTouchMode=true;isClickable=true
-            background=surface(0x22020c1c)
-            setOnFocusChangeListener{_,f->background=surface(if(f)accent else 0x22020c1c)}
+            background=surface(if(theme=="red")Color.BLACK else 0x22020c1c)
+            setOnFocusChangeListener{_,f->background=surface(if(f)accent else if(theme=="red")Color.BLACK else 0x22020c1c)}
             setOnClickListener{action()}
         }
     private fun focus(v:View) {v.requestFocus();v.post{if(findFocus()==null&&v.isAttachedToWindow)v.requestFocus()}}
@@ -57,8 +57,8 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         v.nextFocusLeftId=v.id;v.nextFocusRightId=v.id
     }}
     private fun clock()=fixedClock?:SimpleDateFormat("HH:mm",Locale.getDefault()).format(Date())
-    private fun mark(x:Int,y:Int,size:Int) {stage.put(AlaaMark(context,if(theme=="gold")accent else 0xffb8d9ff.toInt()),x,y,size,size)}
-    private fun icon(res:Int,x:Int,y:Int,w:Int,h:Int) {stage.put(ImageView(context).apply{setImageResource(res);setColorFilter(if(theme=="gold")accent else 0xffb8d9ff.toInt());scaleType=ImageView.ScaleType.FIT_CENTER},x,y,w,h)}
+    private fun mark(x:Int,y:Int,size:Int) {stage.put(AlaaMark(context,if(theme=="gold"||theme=="red")accent else 0xffb8d9ff.toInt()),x,y,size,size)}
+    private fun icon(res:Int,x:Int,y:Int,w:Int,h:Int) {stage.put(ImageView(context).apply{setImageResource(res);setColorFilter(if(theme=="gold"||theme=="red")accent else 0xffb8d9ff.toInt());scaleType=ImageView.ScaleType.FIT_CENTER},x,y,w,h)}
     private fun ids():List<Int> = order.filter{when(selectedCategory){1->it in favorites;2->it in recents;0->true;else->it%7==selectedCategory-3}}
     fun home() {
         page="home";drawer=false;fullscreen=false;reset()
@@ -89,8 +89,14 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         focus(cards[homeIndex])
     }
     private fun themeDialog() {
-        android.app.AlertDialog.Builder(context).setTitle(if(arabic)"المظهر" else "Theme")
-            .setItems(arrayOf("Gold","Blue","Royal Blue")){_,i->theme=listOf("gold","blue","royal")[i];home()}.show()
+        page="themes";reset()
+        text(if(arabic)"المظهر" else "Theme",100,80,1300,100,56f)
+        val labels=listOf("Red","Gold","Blue","Royal Blue")
+        val rows=labels.mapIndexed{i,label->button(label,100,250+i*125,900,100,40f){
+            theme=listOf("red","gold","blue","royal")[i];home()
+        }}
+        chain(rows);focus(rows[listOf("red","gold","blue","royal").indexOf(theme).coerceAtLeast(0)])
+
     }
     fun categories() {
         page="categories";drawer=true;fullscreen=false;reset(true)
@@ -151,7 +157,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
                 }
             }
             text((channelOffset+row+1).toString(),28,y,55,58,27f)
-            text("A",101,y+7,62,44,26f,0xffdaeaff.toInt(),true).background=surface(0xff234368.toInt())
+            text("A",101,y+7,62,44,26f,0xffdaeaff.toInt(),true).background=surface(if(theme=="red")accent else 0xff234368.toInt())
             text(names[index],190,y,710,58,29f)
             v
         }
@@ -159,7 +165,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         val preview=button("",960,251,935,526){showFullscreen()}
         preview.background=surface(Color.BLACK)
         text(if(arabic)"لا يوجد بث متصل" else "No stream connected",1030,470,790,70,32f,0xff7f91a8.toInt(),true)
-        stage.put(View(context).apply{setBackgroundColor(if(theme=="gold")0xff161309.toInt() else 0xff061426.toInt())},960,777,935,80)
+        stage.put(View(context).apply{setBackgroundColor(if(theme=="red")Color.BLACK else if(theme=="gold")0xff161309.toInt() else 0xff061426.toInt())},960,777,935,80)
         text(names[selectedChannel],978,787,750,70,31f).typeface=Typeface.DEFAULT_BOLD
         favorite=button(if(selectedChannel in favorites)"♥" else "♡",1775,787,110,70,47f){
             if(!favorites.add(selectedChannel))favorites.remove(selectedChannel);live()
@@ -235,6 +241,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         if(fullscreen){fullscreen=false;if(page=="series-detail")seriesDetail() else if(page=="movie-detail")movieDetail() else live();return true}
         if(page=="movie-detail"||page=="series-detail"){catalogue(seriesMode);return true}
         if(page=="movies"||page=="series"){home();return true}
+        if(page=="themes"){home();return true}
         if(page=="live"){categories();return true}
         if(page=="categories"){home();return true}
         return false
