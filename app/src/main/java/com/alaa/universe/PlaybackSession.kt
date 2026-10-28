@@ -16,7 +16,9 @@ import androidx.media3.ui.PlayerView
 
 /** One foreground player. No URL, credentials, errors or analytics are logged by this app. */
 @androidx.annotation.OptIn(UnstableApi::class)
-class PlaybackSession(private val context:Context, private val repository:ProviderRepository, private val status:(String)->Unit) {
+class PlaybackSession(private val context:Context, private val repositoryProvider:()->ProviderRepository, private val status:(String)->Unit) {
+    constructor(context:Context, fixed:ProviderRepository, status:(String)->Unit):this(context,{fixed},status)
+    private val repository get()=repositoryProvider()
     init { androidx.media3.common.util.Log.setLogLevel(androidx.media3.common.util.Log.LOG_LEVEL_OFF) }
     var player:ExoPlayer?=null; private set
     private var view:PlayerView?=null

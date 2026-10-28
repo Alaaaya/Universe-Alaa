@@ -73,13 +73,15 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
         }
         activeSnapshot
     } }
-    fun connect(login: ProviderLogin): ProviderSnapshot = safe {
+    fun connect(login: ProviderLogin): ProviderSnapshot = prepareConnect(login).invoke()
+    internal fun prepareConnect(login: ProviderLogin): () -> ProviderSnapshot = safe {
         validateLogin(login)
         val normalized = login.copy(name = login.name.trim().ifBlank {
             validatedUrl(login.m3uUrl.ifBlank { login.server }, login.allowHttp).host
         })
         val ticket = synchronized(stateLock) { ensureLoaded(); ++generation }
-        loadAndPublish(normalized, ticket)
+        val operation: () -> ProviderSnapshot = { safe { loadAndPublish(normalized, ticket) } }
+        operation
     }
     private fun loadAndPublish(login: ProviderLogin, ticket: Long): ProviderSnapshot {
         val result = if (login.m3uUrl.isNotBlank()) parseM3u(fetch(login.m3uUrl, login), login) else loadXtream(login)

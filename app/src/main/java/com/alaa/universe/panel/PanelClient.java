@@ -91,7 +91,7 @@ public final class PanelClient {
                     stop("invalid_config"); defer(null); return;
                 }
             }
-            validateResponse(r);
+            try { validateResponse(r); } catch(Exception mismatch) { stop("invalid_config"); defer(null); return; }
             String status=r.getString("status");
             switch(status) {
                 case "active":
@@ -125,6 +125,28 @@ public final class PanelClient {
             if(offline==null || state.has("blocked") || age<0 || age>=86400000L || !notExpired(offline,clock.now()))
                 listener.onStopped("refresh_unavailable");
         }
+    }
+    public synchronized long leaseRemainingMillis() {
+        if(state==null || state.optJSONObject("cache")==null || state.has("blocked")) return 0;
+        JSONObject c=state.optJSONObject("cache");
+        long now=clock.now(),age=now-state.optLong("cachedAt");
+        if(age<0 || !notExpired(c,now)) return 0;
+        long remaining=86400000L-age;
+        // Binary search uses the same strict parser/expiry semantics as open().
+        long low=0,high=Math.max(0,remaining);
+        while(low<high) { long mid=low+(high-low+1)/2; if(notExpired(c,now+mid)) low=mid; else high=mid-1; }
+        return low;
+    }
+    /** No network and no callback with credentials. Called by foreground playback lease timer. */
+    public synchronized boolean enforceLease() {
+        try {
+            load();
+            JSONObject cache=state.optJSONObject("cache");
+            long age=clock.now()-state.optLong("cachedAt");
+            if(cache!=null && !state.has("blocked") && age>=0 && age<86400000L && notExpired(cache,clock.now())) return true;
+            if(cache!=null) stop("cache_expired");
+        } catch(Exception ignored) { listener.onStopped("refresh_unavailable"); }
+        return false;
     }
     private static boolean notExpired(JSONObject r,long now) {
         if(r.isNull("expires_at")) return true;

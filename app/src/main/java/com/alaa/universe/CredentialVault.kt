@@ -12,10 +12,12 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /** All persisted provider material is authenticated ciphertext, excluded from Android backup. */
-class CredentialVault internal constructor(context: Context, private val testKeyProvider: (() -> SecretKey)?) {
-    constructor(context: Context) : this(context, null)
-    private val root = File(context.noBackupFilesDir, "provider-v1").apply { mkdirs() }
-    private val alias = context.packageName + ".provider.v1"
+class CredentialVault internal constructor(context: Context, private val testKeyProvider: (() -> SecretKey)?, private val namespace: String) {
+    internal constructor(context: Context, testKeyProvider: (() -> SecretKey)?) : this(context, testKeyProvider, "provider-v1")
+    constructor(context: Context) : this(context, null, "provider-v1")
+    companion object { fun named(context: Context, namespace: String) = CredentialVault(context, null, namespace) }
+    private val root = File(context.noBackupFilesDir, namespace).apply { mkdirs() }
+    private val alias = context.packageName + if (namespace == "provider-v1") ".provider.v1" else "." + namespace
     private fun file(name: String): AtomicFile {
         require(Regex("[a-zA-Z0-9_-]{1,100}").matches(name))
         return AtomicFile(File(root, name))

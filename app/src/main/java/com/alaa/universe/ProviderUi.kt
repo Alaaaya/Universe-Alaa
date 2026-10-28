@@ -13,7 +13,10 @@ import java.util.concurrent.Executors
 /** Real-provider routes. Lists are paged so a 50,000 item account never creates 50,000 Views. */
 class ProviderUi(private val screen:UniverseScreen) {
     private val context=screen.context
-    val repository=ProviderRepository(context)
+    private val manualRepository=ProviderRepository(context)
+    private val panelRepository=ProviderRepository(CredentialVault.named(context,"panel-provider-v2"))
+    private var panelSelected=false
+    val repository get()=if(panelSelected)panelRepository else manualRepository
     var snapshot:ProviderSnapshot?=null; private set
     private val worker=Executors.newSingleThreadExecutor()
     private val main=Handler(Looper.getMainLooper())
@@ -42,17 +45,61 @@ class ProviderUi(private val screen:UniverseScreen) {
     private var currentList=emptyList<MediaEntry>()
     private var favorites=loadSet("favorites")
     private var recents=loadSet("recent")
-    val playback=PlaybackSession(context,repository){message->statusView?.text=message}
+    val playback=PlaybackSession(context,{repository}){message->statusView?.text=message}
+    private val panelNetwork=Executors.newSingleThreadExecutor()
+    private val panelLoads=Executors.newSingleThreadExecutor()
+    private val panel by lazy { PanelIntegration(
+        com.alaa.universe.panel.KeystorePanelStore(context),
+        com.alaa.universe.panel.HttpsPanelTransport(),panelRepository,
+        java.util.concurrent.Executor { panelLoads.execute(it) },
+        java.util.concurrent.Executor { main.post(it) },
+        changed={value,_->handlePanelChange(value)},stopped={if(panelSelected){generation++;detailGeneration++;playback.stop();snapshot=null}}
+    ) }
+    private fun handlePanelChange(value:ProviderSnapshot?){
+            run{
+                val selectedNow=panel.ownsProvider
+                if(selectedNow || panelSelected){
+                    generation++;detailGeneration++;busy=false
+                    panelSelected=selectedNow
+                    snapshot=if(selectedNow)value else runCatching{manualRepository.cached()}.getOrNull()
+                    imageHttpAllowed=runCatching{repository.login()?.allowHttp==true}.getOrDefault(false)
+                    episodeList=emptyList();selected=null;currentList=emptyList()
+                    if(!closed)screen.home()
+                }
+            }
+    }
+    private var foreground=false
+    private val panelTick=object:Runnable {
+        override fun run(){
+            if(closed||!foreground||testMode)return
+            panel.tick()
+            main.postDelayed(this,1000)
+        }
+    }
+    private val panelPoll=object:Runnable {
+        override fun run(){
+            if(closed||!foreground||testMode)return
+            panelNetwork.execute{panel.open()}
+            main.postDelayed(this,60000)
+        }
+    }
+    fun panelSummary():String = if(testMode)"Device code unavailable" else
+        "Device code  "+panel.code.ifBlank{"Preparing…"}+"\n"+panel.status
     var testMode=false
     private fun loadSet(key:String)=context.getSharedPreferences("media-state",0).getStringSet(key,emptySet())!!.toMutableSet()
     private fun identity(e:MediaEntry)=e.kind+":"+e.id
     private fun saveState(){context.getSharedPreferences("media-state",0).edit().putStringSet("favorites",favorites).putStringSet("recent",recents).apply()}
     fun start(){
         if(testMode||closed)return
+        foreground=true
+        panel.tick()
+        main.removeCallbacks(panelTick);main.post(panelTick)
+        main.removeCallbacks(panelPoll);main.post(panelPoll)
+        val startToken=generation
         worker.execute {
-            val cached=runCatching{repository.cached()}.getOrNull()
+            val cached=runCatching{manualRepository.cached()}.getOrNull()
             val http=runCatching{repository.login()?.allowHttp==true}.getOrDefault(false)
-            main.post{if(!closed){snapshot=cached;imageHttpAllowed=http;if(screen.page=="home")screen.home();refresh(false)}}
+            main.post{if(!closed&&startToken==generation&&!panelSelected){snapshot=cached;imageHttpAllowed=http;if(screen.page=="home")screen.home();refresh(false)}}
         }
     }
     fun refresh(notify:Boolean=true) {
@@ -79,6 +126,7 @@ class ProviderUi(private val screen:UniverseScreen) {
             importantForAutofill=View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
             root.addView(this)
         }
+        root.addView(TextView(context).apply{text=panelSummary();setPadding(0,8,0,16)})
         val name=field("Playlist name")
         val server=field("Server URL for Xtream")
         val username=field("Username")
@@ -93,6 +141,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         dialog.setOnShowListener{dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener{
             if(busy)return@setOnClickListener
             val login=ProviderLogin(name.text.toString().trim().ifBlank{runCatching{java.net.URI(if(m3u.text.isNotBlank())m3u.text.toString().trim() else server.text.toString().trim()).host}.getOrNull()?:"Playlist"},server.text.toString().trim(),username.text.toString().trim(),password.text.toString(),m3u.text.toString().trim(),http.isChecked)
+            if(panelSelected){playback.stop();panelSelected=false;generation++;detailGeneration++;snapshot=null}
             busy=true;help.text="Connecting…";dialog.getButton(-1).isEnabled=false
             val token=generation
             worker.execute{
@@ -307,6 +356,6 @@ class ProviderUi(private val screen:UniverseScreen) {
         if(full){full=false;if(mode=="live")browse(mode) else {playback.stop();if(mode=="series")renderEpisodes() else detail(false)};return true}
         return false
     }
-    fun stop(){detailGeneration++;playback.stop();if(full){full=false;screen.home()}}
-    fun close(){closed=true;generation++;playback.stop();pictures.forEach{com.bumptech.glide.Glide.with(context).clear(it)};pictures.clear();worker.shutdownNow()}
+    fun stop(){foreground=false;main.removeCallbacks(panelTick);main.removeCallbacks(panelPoll);detailGeneration++;playback.stop();if(full){full=false;screen.home()}}
+    fun close(){closed=true;if(!testMode)panel.close();panelNetwork.shutdownNow();panelLoads.shutdownNow();main.removeCallbacks(panelTick);main.removeCallbacks(panelPoll);generation++;playback.stop();pictures.forEach{com.bumptech.glide.Glide.with(context).clear(it)};pictures.clear();worker.shutdownNow()}
 }
