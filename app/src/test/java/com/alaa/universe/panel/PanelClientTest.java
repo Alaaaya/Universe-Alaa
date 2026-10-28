@@ -28,7 +28,7 @@ public class PanelClientTest {
                 return new JSONObject().put("status","registered");
             }
             JSONObject r=new JSONObject().put("status",configStatus);
-            if(configStatus.equals("active")) r.put("expires_at",JSONObject.NULL).put("playlists",
+            if(configStatus.equals("active")) r.put("device_code",req.getString("p_device_code")).put("app_type","universe").put("expires_at",JSONObject.NULL).put("playlists",
                 new org.json.JSONArray("[{\"id\":\"test\"}]"));
             return r;
         };
@@ -49,19 +49,19 @@ public class PanelClientTest {
         now+=10000;client().open();assertEquals(2,calls);assertEquals(code,client().displayCode());
     }
     @Test public void pendingExpiredRenewsButActiveNeverDoes() throws Exception {
-        PanelClient c=client();c.open();String old=c.displayCode();configStatus="registration_expired";c.open();
+        PanelClient c=client();c.open();String old=c.displayCode();configStatus="registration_expired";now+=60000;c.open();
         assertNotEquals(old,c.displayCode());
         now+=10000;configStatus="active";c.open();String active=c.displayCode();
-        configStatus="registration_expired";c.open();assertEquals(active,c.displayCode());
+        configStatus="registration_expired";now+=60000;c.open();assertEquals(active,c.displayCode());
         assertFalse(new JSONObject(store.value).has("cache"));
     }
     @Test public void inactiveDoesNotProvePending() throws Exception {
         configStatus="inactive";PanelClient c=client();c.open();String old=c.displayCode();
-        configStatus="registration_expired";c.open();assertEquals(old,c.displayCode());
+        configStatus="registration_expired";now+=60000;c.open();assertEquals(old,c.displayCode());
     }
     @Test public void revocationClearsSecureCacheAndStops() throws Exception {
         configStatus="active";PanelClient c=client();c.open();assertEquals(1,configs);
-        configStatus="unauthorized";c.open();assertEquals("unauthorized",stopped);
+        configStatus="unauthorized";now+=60000;c.open();assertEquals("unauthorized",stopped);
         assertFalse(new JSONObject(store.value).has("cache"));
         int count=configs; c.open(); assertEquals(count,configs);
     }
@@ -77,5 +77,53 @@ public class PanelClientTest {
     }
     @Test public void corruptIdentityFailsClosed() {
         store.value="{broken";client().open();assertEquals(0,calls);assertEquals("{broken",store.value);
+    }
+
+    @Test public void successCooldownSurvivesRestart() throws Exception {
+        client().open(); int count=calls;
+        assertTrue(new JSONObject(store.value).getLong("next")>=now+60000);
+        client().open(); now+=59999; client().open(); assertEquals(count,calls);
+        now++; client().open(); assertEquals(count+1,calls);
+    }
+    @Test public void invalidActiveCannotRenewPendingIdentity() throws Exception {
+        PanelClient c=client();c.open();String code=c.displayCode();now+=60000;
+        wire=(f,r)->new JSONObject().put("status","active");c=client();c.open();
+        JSONObject saved=new JSONObject(store.value);
+        assertTrue(saved.getBoolean("everActive"));assertFalse(saved.getBoolean("pendingProof"));
+        assertEquals("invalid_config",stopped);
+        now+=60000;wire=(f,r)->new JSONObject().put("status","registration_expired");
+        client().open();assertEquals(code,client().displayCode());
+    }
+    @Test public void mismatchedDeviceAndAppNeverCached() throws Exception {
+        PanelClient c=client();c.open();now+=60000;
+        wire=(f,r)->new JSONObject().put("status","active").put("device_code","FFFFFFFFFFFF").put("app_type","universe");
+        client().open();assertEquals(0,configs);
+        assertTrue(new JSONObject(store.value).getBoolean("everActive"));
+        assertFalse(new JSONObject(store.value).has("cache"));
+        now+=60000;
+        wire=(f,r)->new JSONObject().put("status","active").put("device_code",r.getString("p_device_code")).put("app_type","alaa_player");
+        client().open();assertEquals(0,configs);
+    }
+    @Test public void offlineLeaseExpiresAfter24Hours() throws Exception {
+        configStatus="active";client().open(); assertEquals(1,configs);
+        wire=(f,r)->{throw new java.io.IOException();};
+        now+=60000;stopped=null;client().open();assertEquals(2,configs);assertNull(stopped);
+        now+=86400000;client().open();assertEquals(2,configs);
+        assertFalse(new JSONObject(store.value).has("cache"));assertNotNull(stopped);
+    }
+    @Test public void serverExpiryEndsOfflineLease() throws Exception {
+        configStatus="active";client().open();
+        JSONObject saved=new JSONObject(store.value);
+        saved.getJSONObject("cache").put("expires_at","1970-01-01T00:20:00+00:00");
+        store.value=saved.toString();now=1200001;
+        wire=(f,r)->{throw new java.io.IOException();};
+        client().open();assertEquals(1,configs);assertFalse(new JSONObject(store.value).has("cache"));
+    }
+    @Test public void expiredActivePermanentlyBurnsPendingProof() throws Exception {
+        client().open();now+=60000;
+        wire=(f,r)->new JSONObject().put("status","active").put("device_code",r.getString("p_device_code"))
+            .put("app_type","universe").put("expires_at","1970-01-01T00:00:00Z").put("playlists",new org.json.JSONArray("[{}]"));
+        client().open();JSONObject saved=new JSONObject(store.value);
+        assertTrue(saved.getBoolean("everActive"));assertFalse(saved.getBoolean("pendingProof"));assertEquals("invalid_config",stopped);
     }
 }

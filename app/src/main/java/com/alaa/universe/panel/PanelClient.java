@@ -58,7 +58,7 @@ public final class PanelClient {
         long wait=Math.max(base,Math.min(86400L,Math.max(0,seconds))*1000L);
         state.put("attempts",attempts).put("next",clock.now()+wait+random.nextInt(1001)); save();
     }
-    private void resetBackoff() throws Exception { state.put("attempts",0).put("next",0); save(); }
+    private void resetBackoff() throws Exception { state.put("attempts",0).put("next",clock.now()+60000L); save(); }
     private void validateResponse(JSONObject r) throws Exception {
         if(r.has("device_code")&&!state.getString("code").equals(r.getString("device_code"))) throw new Exception("mismatch");
         if(r.has("app_type")&&!"universe".equals(r.getString("app_type"))) throw new Exception("mismatch");
@@ -83,7 +83,15 @@ public final class PanelClient {
                 if(!"registered".equals(status)) { stop("pairing_required"); defer(null); return; }
                 state.put("registered",true); save();
             }
-            JSONObject r=transport.call("get_device_config_v2",request()); validateResponse(r);
+            JSONObject r=transport.call("get_device_config_v2",request());
+            // Any active observation conservatively burns renewal permission before validation.
+            if("active".equals(r.optString("status"))) {
+                state.put("everActive",true).put("pendingProof",false); save();
+                if(!r.has("device_code") || !r.has("app_type")) {
+                    stop("invalid_config"); defer(null); return;
+                }
+            }
+            validateResponse(r);
             String status=r.getString("status");
             switch(status) {
                 case "active":

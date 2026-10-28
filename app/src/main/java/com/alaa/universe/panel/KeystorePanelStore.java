@@ -28,7 +28,11 @@ public final class KeystorePanelStore implements PanelClient.Store {
         return g.generateKey();
     }
     @Override public synchronized String read() throws Exception {
-        if(!file.getBaseFile().exists() && !new File(file.getBaseFile()+".bak").exists()) return null;
+        if(!file.getBaseFile().exists() && !new File(file.getBaseFile()+".bak").exists()) {
+            KeyStore ks=KeyStore.getInstance("AndroidKeyStore"); ks.load(null);
+            if(ks.containsAlias(alias)) throw new IOException("Pairing recovery required");
+            return null;
+        }
         try(InputStream in=file.openRead()) {
             ByteArrayOutputStream out=new ByteArrayOutputStream(); byte[] buffer=new byte[4096]; int n;
             while((n=in.read(buffer))!=-1) { if(out.size()+n>1048576) throw new IOException("Invalid envelope"); out.write(buffer,0,n); }
