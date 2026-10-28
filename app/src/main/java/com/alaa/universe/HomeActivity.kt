@@ -10,10 +10,14 @@ class HomeActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or
             View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        com.bumptech.glide.Glide.init(applicationContext,com.bumptech.glide.GlideBuilder().setLogLevel(android.util.Log.ERROR))
         screen = UniverseScreen(this)
         setContentView(screen)
         screen.home()
     }
+    override fun onStart(){super.onStart();screen.provider.start()}
+    override fun onStop(){screen.provider.stop();super.onStop()}
+    override fun onDestroy(){screen.provider.close();super.onDestroy()}
     @Deprecated("TV Back compatibility")
     override fun onBackPressed() { if (!screen.back()) super.onBackPressed() }
 }

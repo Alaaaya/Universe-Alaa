@@ -9,7 +9,9 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 class UniverseScreen(context:Context): FrameLayout(context) {
-    var theme="red"
+    var theme=context.getSharedPreferences("appearance",0).getString("theme","red")!!
+    var previewFixtures=false
+    val provider by lazy { ProviderUi(this) }
     var homeTheme=context.getSharedPreferences("appearance",0).getString("home","classic")!!
     var arabic=false
     var fixedClock:String?=null
@@ -64,12 +66,12 @@ class UniverseScreen(context:Context): FrameLayout(context) {
     fun home() {
         page="home";drawer=false;fullscreen=false;reset()
         if(homeTheme=="prayer"){prayerHome();return}
-        text("Alaa",54,43,250,38,25f,0xff9aaec8.toInt())
+        text(provider.snapshot?.name?:"Not connected",54,43,250,38,25f,0xff9aaec8.toInt())
         text(clock(),338,43,180,38,25f,0xff9aaec8.toInt())
         val date=if(fixedClock!=null)"28 October 2026" else SimpleDateFormat("dd MMMM yyyy",Locale.getDefault()).format(Date())
         text(date,54,85,270,34,22f,0xff8096b4.toInt())
         text("—",338,85,160,34,22f,0xff8096b4.toInt())
-        text(if(arabic)"الأيام المتبقية  —" else "(Days Left: —)",54,137,440,35,22f,0xff8096b4.toInt())
+        text(if(arabic)"الأيام المتبقية  "+daysLeft() else "(Days Left: "+daysLeft()+")",54,137,440,35,22f,0xff8096b4.toInt())
         stage.put(View(context).apply{setBackgroundColor(0x40738ba8)},314,47,1,72)
         text(if(arabic)"الموقع غير محدد" else "Location unavailable",1480,43,385,40,25f,0xff9aaec8.toInt()).gravity=Gravity.RIGHT or Gravity.CENTER_VERTICAL
         text("—°",1570,93,295,36,25f,0xff9aaec8.toInt()).gravity=Gravity.RIGHT or Gravity.CENTER_VERTICAL
@@ -84,7 +86,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
             icon(icons[i],x+65,650,140,140)
             button(s,x,827,270,70,29f){
                 homeIndex=i
-                if(i==0) categories() else if(i==1) catalogue(false) else if(i==2) catalogue(true) else if(i==4) themeDialog() else Toast.makeText(context,if(arabic)"غير متصل" else "Not connected",Toast.LENGTH_SHORT).show()
+                when(i){0->categories();1->catalogue(false);2->catalogue(true);3->provider.loginDialog();4->themeDialog();5->provider.refresh()}
             }.apply{contentDescription=s;gravity=Gravity.CENTER}
         }
         cards.forEachIndexed{i,v->v.nextFocusUpId=v.id;v.nextFocusDownId=v.id;v.nextFocusLeftId=cards[maxOf(0,i-1)].id;v.nextFocusRightId=cards[minOf(5,i+1)].id}
@@ -106,11 +108,11 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         stage.put(GlassContour(context,0xff329fff.toInt(),35f),9,7,1902,206)
         stage.put(View(context).apply{background=glass(0xd00b1429.toInt(),0xff59bfff.toInt(),35f)},24,22,1872,176)
         text("AP",49,52,100,105,48f,Color.WHITE,true).apply{background=glass(0x99465478.toInt(),0x6673a6c6);typeface=Typeface.DEFAULT_BOLD}
-        text("Alaa",174,46,340,39,29f,Color.WHITE)
+        text(provider.snapshot?.name?:"Not connected",174,46,340,39,29f,Color.WHITE)
         val df=SimpleDateFormat("dd MMMM yyyy",Locale.ENGLISH).apply{timeZone=TimeZone.getTimeZone("Europe/Berlin")}
         text(df.format(Date()),174,91,350,30,22f,Color.WHITE)
         stage.put(View(context).apply{background=surface(0x8887cfff.toInt())},532,54,2,100)
-        text("(Days Left: —)",174,135,340,30,21f,Color.WHITE)
+        text("(Days Left: "+daysLeft()+")",174,135,340,30,21f,Color.WHITE)
         text(fixedClock?:SimpleDateFormat("HH:mm",Locale.US).apply{timeZone=TimeZone.getTimeZone("Europe/Berlin")}.format(Date()),560,58,250,75,56f,Color.WHITE,true).typeface=Typeface.DEFAULT_BOLD
         text("—",560,133,250,28,25f,Color.WHITE,true)
         stage.put(MosqueArt(context),797,27,238,158)
@@ -139,7 +141,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
             val x=44+i*309;val color=colors[i]
             val rim=NeonRim(context,color);stage.put(rim,x-17,543,321,330)
             val v=button("",x,560,287,296){
-                homeIndex=i;when(i){0->categories();1->catalogue(false);2->catalogue(true);4->themeDialog();else->Toast.makeText(context,"Not connected",Toast.LENGTH_SHORT).show()}
+                homeIndex=i;when(i){0->categories();1->catalogue(false);2->catalogue(true);3->provider.loginDialog();4->themeDialog();5->provider.refresh()}
             }
             v.contentDescription=label
             fun paint(f:Boolean){
@@ -157,7 +159,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         }
         cards.forEachIndexed{i,v->v.nextFocusLeftId=cards[maxOf(0,i-1)].id;v.nextFocusRightId=cards[minOf(5,i+1)].id;v.nextFocusUpId=v.id;v.nextFocusDownId=v.id}
         stage.put(GlassContour(context,0xff53bcff.toInt(),32f),40,980,510,94)
-        text("Playlist: "+context.getSharedPreferences("playlist",0).getString("name","Not connected"),105,996,430,64,26f,Color.WHITE,true).background=glass(0xd0091429.toInt(),0xff73ceff.toInt(),32f)
+        text("Playlist: "+(provider.snapshot?.name?:"Not connected"),105,996,430,64,26f,Color.WHITE,true).background=glass(0xd0091429.toInt(),0xff73ceff.toInt(),32f)
         for(j in 0..2){
             stage.put(View(context).apply{background=surface(Color.WHITE)},69,1011+j*13,5,3)
             stage.put(View(context).apply{background=surface(Color.WHITE)},80,1011+j*13,17,3)
@@ -170,12 +172,14 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         val labels=listOf("Red","Gold","Blue","Royal Blue","Sunset Prayer")
         val rows=labels.mapIndexed{i,label->button(label,100,250+i*125,900,100,40f){
             if(i==4)homeTheme="prayer" else {homeTheme="classic";theme=listOf("red","gold","blue","royal")[i]}
-            context.getSharedPreferences("appearance",0).edit().putString("home",homeTheme).apply();home()
+            context.getSharedPreferences("appearance",0).edit().putString("home",homeTheme).putString("theme",theme).apply();home()
         }}
         chain(rows);focus(rows[listOf("red","gold","blue","royal").indexOf(theme).coerceAtLeast(0)])
 
     }
+    private fun daysLeft()=provider.snapshot?.let{it.expires?.let{_->it.daysLeft(System.currentTimeMillis()).toString()}?:"Unlimited / unknown"}?:"—"
     fun categories() {
+        if(!previewFixtures){if(provider.requireConnection()){page="categories";provider.categories()};return}
         page="categories";drawer=true;fullscreen=false;reset(true)
         text(if(arabic)"القنوات" else "Live TV",52,49,800,105,65f)
         icon(R.drawable.ic_search,1450,64,55,55);mark(1560,38,86)
@@ -207,6 +211,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
     }
     private fun trueColor()=textColor
     fun live(openDrawer:Boolean=false) {
+        if(!previewFixtures){if(openDrawer){categories();return};if(provider.requireConnection()){page="live";provider.browse("live")};return}
         if(openDrawer){categories();return}
         page="live";drawer=false;fullscreen=false;reset(true)
         button("‹",40,55,80,80,65f){categories()}.gravity=Gravity.CENTER
@@ -264,6 +269,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         stage.put(PosterArt(context,index,titles[index%titles.size]),x,y,w,h)
     }
     fun catalogue(series:Boolean) {
+        if(!previewFixtures){if(provider.requireConnection()){seriesMode=series;page=if(series)"series" else "movies";provider.browse(if(series)"series" else "movie")};return}
         seriesMode=series;page=if(series)"series" else "movies";fullscreen=false;drawer=false;reset()
         mark(35,35,90)
         text("universe-Alaa",135,48,510,65,37f,accent)
@@ -289,6 +295,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         focus(cards[chosenTitle])
     }
     fun movieDetail() {
+        if(!previewFixtures){page="movie-detail";provider.detail(false);return}
         page="movie-detail";reset()
         text(titles[chosenTitle].uppercase(),288,65,1536,110,49f,accent,true).typeface=Typeface.DEFAULT_BOLD
         poster(chosenTitle,288,216,480,702)
@@ -300,6 +307,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         play.nextFocusRightId=fav.id;fav.nextFocusLeftId=play.id;focus(play)
     }
     fun seriesDetail() {
+        if(!previewFixtures){page="series-detail";provider.detail(true);return}
         page="series-detail";reset()
         text(titles[chosenTitle],96,28,1728,70,45f,accent)
         poster(chosenTitle,150,108,400,432)
@@ -315,6 +323,8 @@ class UniverseScreen(context:Context): FrameLayout(context) {
     }
     private fun showFullscreen(){fullscreen=true;reset();text(if(arabic)"لا يوجد بث متصل" else "No stream connected",400,450,1120,150,45f,textColor,true)}
     fun back():Boolean {
+        if(!previewFixtures&&provider.back())return true
+        if(!previewFixtures)provider.stop()
         if(fullscreen){fullscreen=false;if(page=="series-detail")seriesDetail() else if(page=="movie-detail")movieDetail() else live();return true}
         if(page=="movie-detail"||page=="series-detail"){catalogue(seriesMode);return true}
         if(page=="movies"||page=="series"){home();return true}
@@ -324,6 +334,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         return false
     }
     override fun dispatchKeyEvent(event:KeyEvent):Boolean {
+        if(!previewFixtures&&provider.key(event))return true
         if(super.dispatchKeyEvent(event))return true
         if(event.action!=KeyEvent.ACTION_DOWN)return false
         val d=when(event.keyCode){21->View.FOCUS_LEFT;22->View.FOCUS_RIGHT;19->View.FOCUS_UP;20->View.FOCUS_DOWN;else->return false}

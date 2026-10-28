@@ -15,7 +15,7 @@ import java.io.File
 @Config(sdk=[28],qualifiers="w1920dp-h1080dp-land-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PhaseOneTest {
- private fun activity()=Robolectric.buildActivity(HomeActivity::class.java).setup().visible().get().also{it.screen.fixedClock="19:42";it.screen.home();layout(it)}
+ private fun activity()=Robolectric.buildActivity(HomeActivity::class.java).setup().visible().get().also{it.screen.previewFixtures=true;it.screen.provider.testMode=true;it.screen.fixedClock="19:42";it.screen.home();layout(it)}
  private fun layout(a:HomeActivity){a.screen.measure(View.MeasureSpec.makeMeasureSpec(1920,1073741824),View.MeasureSpec.makeMeasureSpec(1080,1073741824));a.screen.layout(0,0,1920,1080);shadowOf(Looper.getMainLooper()).idle()}
  private fun key(a:HomeActivity,c:Int){a.dispatchKeyEvent(KeyEvent(0,c));a.dispatchKeyEvent(KeyEvent(1,c));layout(a)}
  private fun shot(a:HomeActivity,n:String){layout(a);val b=Bitmap.createBitmap(1920,1080,Bitmap.Config.ARGB_8888);a.screen.draw(Canvas(b));File("/home/kit/tmp/ua/red-shots").mkdirs();File("/home/kit/tmp/ua/red-shots/$n.png").outputStream().use{b.compress(Bitmap.CompressFormat.PNG,100,it)}}
