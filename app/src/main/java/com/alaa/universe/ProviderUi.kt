@@ -36,13 +36,14 @@ class ProviderUi(private val screen:UniverseScreen) {
     private var moving:MediaMove?=null
     private var movingCategories=false
     private var heldOk:Int?=null
+    private var pendingSave=false
     private var pendingMove:MoveTarget?=null
     private var pendingClick:View?=null
     private var longStarted=false
     private val longOk=Runnable {
         val target=pendingMove
         if(heldOk!=null && target!=null && moving==null && pendingClick?.hasFocus()==true){
-            longStarted=true;beginMove(target)
+            longStarted=true;showItemMenu(target)
         }
     }
     private fun orderScope(categories:Boolean):List<String> {
@@ -63,11 +64,36 @@ class ProviderUi(private val screen:UniverseScreen) {
     private fun moveIds(categories:Boolean)=if(categories)allCategories().map{it.id} else entries().map{it.id}
     private fun bindMove(view:View,categories:Boolean,id:String) {
         val target=MoveTarget(categories,id);moveRows[view]=target
-        view.setOnLongClickListener{longStarted=true;beginMove(target);true}
+        view.setOnLongClickListener{longStarted=true;showItemMenu(target);true}
         if(moving?.id==id && movingCategories==categories){
             view.contentDescription="Moving "+view.contentDescription+". Up or Down to move, OK to save, Back to cancel."
             (view as? TextView)?.let{it.text="↕ "+it.text}
         }
+    }
+    private fun showItemMenu(target:MoveTarget){
+        val scope=orderScope(target.categoryRow)
+        val entry=if(target.categoryRow)null else currentList.firstOrNull{it.id==target.id}
+        val labels=mutableListOf("نقل")
+        if(entry!=null)labels.add(if(identity(entry) in favorites)"احذف من المفضلة" else "أضف إلى المفضلة")
+        val menu=AlertDialog.Builder(context).setItems(labels.toTypedArray()){_,which->
+            clearMoveInput()
+            if(scope!=orderScope(target.categoryRow))return@setItems
+            if(which==0)beginMove(target)
+            else if(entry!=null){
+                if(!favorites.add(identity(entry)))favorites.remove(identity(entry))
+                saveState();browse(mode,categoryOnlyView)
+            }
+        }.create()
+        // The dialog owns the window as soon as it opens. Consume the initiating
+        // hold's remaining repeats/release there too, not just in the screen.
+        menu.setOnKeyListener{_,key,event->
+            if(heldOk==key){
+                if(event.action==KeyEvent.ACTION_UP)clearMoveInput()
+                true
+            }else false
+        }
+        menu.show()
+        menu.window?.decorView?.layoutDirection=View.LAYOUT_DIRECTION_LTR
     }
     private fun beginMove(target:MoveTarget){
         if(moving!=null)return
@@ -98,7 +124,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         else if(at>=0){offset=offset.coerceIn(maxOf(0,at-11),at);nextCardFocus=at-offset}
         browse(mode,categoryOnlyView)
     }
-    private fun clearMoveInput(){main.removeCallbacks(longOk);pendingMove=null;pendingClick=null;heldOk=null;longStarted=false}
+    private fun clearMoveInput(){main.removeCallbacks(longOk);pendingMove=null;pendingClick=null;heldOk=null;longStarted=false;pendingSave=false}
     private var selected:MediaEntry?=null
     private var episodeList=emptyList<MediaEntry>()
     private var season=0
@@ -113,7 +139,31 @@ class ProviderUi(private val screen:UniverseScreen) {
     private val pictures=mutableListOf<ImageView>()
     var imageHttpAllowed=false; private set
     private var currentList=emptyList<MediaEntry>()
-    private var favorites=loadSet("favorites")
+    private var favoriteScope=""
+    private var favoriteSnapshot:ProviderSnapshot?=null
+    private var favoriteIds=mutableSetOf<String>()
+    private fun favoriteKey():String {
+        val bytes=java.security.MessageDigest.getInstance("SHA-256").digest(org.json.JSONArray(orderScope(false).take(2)).toString().toByteArray())
+        return "favorites-"+bytes.joinToString(""){"%02x".format(it)}
+    }
+    private val favorites:MutableSet<String> get(){
+        val key=favoriteKey()
+        if(key!=favoriteScope){favoriteScope=key;favoriteSnapshot=null;favoriteIds=loadSet(key)}
+        val current=snapshot
+        val state=context.getSharedPreferences("media-state",0)
+        if(current!=null && state.contains("favorites")){
+            favoriteIds.addAll(loadSet("favorites"))
+            val valid=current.entries.mapTo(HashSet()){identity(it)}
+            favoriteIds.retainAll(valid)
+            state.edit().putStringSet(key,favoriteIds.toSet()).remove("favorites").commit()
+        }
+        if(current!=null && current!==favoriteSnapshot){
+            favoriteSnapshot=current
+            val valid=current.entries.mapTo(HashSet()){identity(it)}
+            if(favoriteIds.retainAll(valid))context.getSharedPreferences("media-state",0).edit().putStringSet(key,favoriteIds.toSet()).apply()
+        }
+        return favoriteIds
+    }
     private var recents=loadSet("recent")
     val playback=PlaybackSession(context,{repository}){message->statusView?.text=message}
     private val panelNetwork=Executors.newSingleThreadExecutor()
@@ -159,7 +209,7 @@ class ProviderUi(private val screen:UniverseScreen) {
     var testMode=false
     private fun loadSet(key:String)=context.getSharedPreferences("media-state",0).getStringSet(key,emptySet())!!.toMutableSet()
     private fun identity(e:MediaEntry)=e.kind+":"+e.id
-    private fun saveState(){context.getSharedPreferences("media-state",0).edit().putStringSet("favorites",favorites).putStringSet("recent",recents).apply()}
+    private fun saveState(){context.getSharedPreferences("media-state",0).edit().putStringSet(favoriteKey(),favorites.toSet()).putStringSet("recent",recents).apply()}
     fun start(){
         if(testMode||closed)return
         foreground=true
@@ -221,7 +271,7 @@ class ProviderUi(private val screen:UniverseScreen) {
                     busy=false
                     if(!closed&&generation==token){
                         result.onSuccess{
-                            snapshot=it;imageHttpAllowed=login.allowHttp;favorites.clear();recents.clear();saveState()
+                            snapshot=it;imageHttpAllowed=login.allowHttp;recents.clear();saveState()
                             password.text.clear();m3u.text.clear();dialog.dismiss();screen.home()
                         }
                         result.onFailure{help.text="Connection failed. Check the URL, credentials, subscription and HTTP permission.";dialog.getButton(-1).isEnabled=true}
@@ -271,7 +321,10 @@ class ProviderUi(private val screen:UniverseScreen) {
         text(title,800,30,1072,75,43f)
     }
     private fun kindCategories()=snapshot?.categories.orEmpty().filter{it.kind==mode}
-    private fun entries()=ordered(snapshot?.entries.orEmpty().filter{it.kind==mode&&when(category){"favorites"->identity(it) in favorites;"recent"->identity(it) in recents;""->true;else->it.categoryId==category}},false){it.id}
+    private fun entries():List<MediaEntry> {
+        val favoriteEntries=if(category=="favorites")favorites else emptySet<String>()
+        return ordered(snapshot?.entries.orEmpty().filter{it.kind==mode&&when(category){"favorites"->identity(it) in favoriteEntries;"recent"->identity(it) in recents;""->true;else->it.categoryId==category}},false){it.id}
+    }
     fun categories(){
         playback.stop();full=false;mode="live";category="";offset=0;catOffset=0
         browse("live",true)
@@ -299,7 +352,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         if(categoryOnly){
             text(snapshot?.name.orEmpty(),1070,410,760,90,46f)
             text(if(moving!=null)"↑ ↓ Move   OK Save   BACK Cancel" else "Choose a category to watch",1070,520,800,65)
-            text("Hold OK to move a category",1070,620,760,65)
+            text("Hold OK for category options",1070,620,760,65)
             focus(catRows.getOrNull(nextCatFocus?:0));nextCatFocus=null;return
         }
         currentList=entries();offset=offset.coerceIn(0,maxOf(0,currentList.size-1))
@@ -353,7 +406,7 @@ class ProviderUi(private val screen:UniverseScreen) {
             playback.zap={delta->zap(delta)}
             open.nextFocusDownId=fav.id
         }
-        text(if(moving!=null)"↑ ↓ Move   OK Save   BACK Cancel" else "${if(currentList.isEmpty())0 else offset+1}–${offset+items.size} / ${currentList.size}   Hold OK to move   BACK Home",490,1015,1380,45,24f)
+        text(if(moving!=null)"↑ ↓ Move   OK Save   BACK Cancel" else "${if(currentList.isEmpty())0 else offset+1}–${offset+items.size} / ${currentList.size}   Hold OK for options   BACK Home",490,1015,1380,45,24f)
         focus(if(nextCatFocus!=null)catRows.getOrNull(nextCatFocus!!) else cards.getOrNull((nextCardFocus?:0).coerceAtMost(cards.lastIndex.coerceAtLeast(0)))?:catRows.firstOrNull());nextCatFocus=null;nextCardFocus=null
     }
     private fun zap(delta:Int){
@@ -433,8 +486,10 @@ class ProviderUi(private val screen:UniverseScreen) {
         if(ok){
             if(event.action==KeyEvent.ACTION_UP && heldOk==key){
                 val click=pendingClick
+                val save=pendingSave && !event.isCanceled
                 val activate=!longStarted && moving==null && !event.isCanceled && click?.hasFocus()==true
                 clearMoveInput()
+                if(save)finishMove(true)
                 if(activate)click?.performClick()
                 return true
             }
@@ -445,7 +500,7 @@ class ProviderUi(private val screen:UniverseScreen) {
                 }
                 if(moving!=null){
                     heldOk=key;longStarted=true
-                    if(event.repeatCount==0)finishMove(true)
+                    pendingSave=event.repeatCount==0
                     return true
                 }
                 val view=screen.findFocus()
