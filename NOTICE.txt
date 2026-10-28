@@ -1,0 +1,1 @@
+Material Design icons by Google, Apache License 2.0. Source https://github.com/google/material-design-icons . Downloaded original licensed SVG paths, not taken from Universe APK. App logo is original text/orbit artwork. Android system sans-serif font, no APK font assets.
