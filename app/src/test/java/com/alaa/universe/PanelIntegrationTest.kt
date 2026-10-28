@@ -127,6 +127,20 @@ class PanelIntegrationTest {
         wall+=10_000;tick+=10_000;assertTrue(p.tick())
         wall-=1;tick+=1;assertFalse(p.tick());assertNull(repo.login())
     }
+
+    @Test fun firstCachedAcceptRejectsRollbackSinceConstruction() {
+        status="active";integration().open()
+        val delayed=integration();offline=true
+        wall-=1_000;tick+=1_000;delayed.open()
+        assertFalse(delayed.ownsProvider);assertNull(repo.login())
+    }
+    @Test fun firstCachedAcceptClampsLeaseToElapsedSinceConstruction() {
+        status="active";integration().open()
+        val delayed=integration();offline=true
+        tick+=86_400_001L // wall stayed frozen while instance waited to open
+        delayed.open()
+        assertFalse(delayed.ownsProvider);assertNull(repo.login())
+    }
     @Test fun manualProviderDataIsNotWipedByPanelDenialInSeparateVault() {
         val manual = ProviderRepository(CredentialVault(context, { SecretKeySpec(ByteArray(16) { 9 }, "AES") }, "manual-test"), { url ->
             if (url.contains("action=")) "[]" else """{"user_info":{"auth":1,"status":"Active"}}""" })

@@ -20,6 +20,8 @@ internal class PanelIntegration(
     private val stopped: () -> Unit
 ) {
     private val lock=Any()
+    private val initialWall=wall()
+    private val initialElapsed=elapsed()
     private var generation=0L
     private var configKey:String?=null
     private var wallDeadline=0L
@@ -53,11 +55,12 @@ internal class PanelIntegration(
                 (if(type=="m3u")value("url") else value("server")).startsWith("http://",true))
             ProviderRepository.validateLogin(login)
             val fresh=client.isFreshDelivery()
-            val remaining=client.leaseRemainingMillis()
+            val remaining=client.leaseRemainingMillis() -
+                if(!fresh && !leaseSeen)maxOf(0L,initialWall+(elapsed()-initialElapsed)-wall()) else 0L
             require(remaining>0)
             synchronized(lock) {
                 if(closed)return
-                if(!fresh && (cacheRejected || (leaseSeen && !valid()))) {
+                if(!fresh && (cacheRejected || (!leaseSeen && wall()<initialWall) || (leaseSeen && !valid()))) {
                     deny("cache_expired");return
                 }
                 if(fresh || !leaseSeen) {
