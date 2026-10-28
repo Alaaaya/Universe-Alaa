@@ -48,7 +48,7 @@ class FullscreenControls(
         time.tag="elapsed-time"
         progress=Progress(context,accent).apply{
             isFocusable=!live;isClickable=!live;contentDescription="Seek position"
-            setOnFocusChangeListener{_,_->invalidate();show()}
+            setOnFocusChangeListener{_,focused->invalidate();if(focused)show()}
             setOnKeyListener{_,key,e->
                 if(e.action==KeyEvent.ACTION_DOWN && (key==21 || key==22)){if(key==21)session.player?.seekBack() else session.player?.seekForward();show();update();true}else false
             }
@@ -66,7 +66,7 @@ class FullscreenControls(
                 when(i){
                     0->previous()
                     1->session.player?.seekBack()
-                    2->session.player?.let{if(it.isPlaying)it.pause() else it.play()}
+                    2->session.player?.let{if(it.playWhenReady)it.pause() else it.play()}
                     3->session.player?.seekForward()
                     4->next()
                     5->session.tracks(C.TRACK_TYPE_AUDIO)
@@ -99,7 +99,7 @@ class FullscreenControls(
     private fun control(name:String,icon:String,x:Int,y:Int,size:Int,action:()->Unit):Control {
         val b=Control(context,icon,accent).apply{
             id=View.generateViewId();contentDescription=name;isFocusable=true;isFocusableInTouchMode=true;isClickable=true
-            setOnClickListener{action()};setOnFocusChangeListener{_,_->invalidate();show()}
+            setOnClickListener{action()};setOnFocusChangeListener{_,focused->invalidate();if(focused)show()}
         };stage.put(b,x,y,size,size);buttons.add(b);return b
     }
     fun show(){visibility=View.VISIBLE;main.removeCallbacks(hide);if(attached)main.postDelayed(hide,4000)}
@@ -117,11 +117,13 @@ class FullscreenControls(
         progress.visibility=if(live)View.INVISIBLE else View.VISIBLE
         progress.isEnabled=known && !live
         progress.isFocusable=known && !live
+        buttons.drop(1).forEach{it.nextFocusUpId=if(known && !live)progress.id else buttons.first().id}
+        buttons.first().nextFocusDownId=if(known && !live)progress.id else pause.id
         (stage.findViewWithTag<TextView>("elapsed-time")).text=if(live)"● LIVE" else clock(position)
         percent.text=if(live)"Live broadcast" else if(known)"${(progress.fraction*100).toInt()}%" else "Duration unavailable"
         total.text=if(!live&&known)"Total  ${clock(duration)}" else ""
         remaining.text=if(live)"Real time" else if(known)"−${clock((duration-position).coerceAtLeast(0))}" else "—"
-        pause.icon=if(p?.isPlaying==false)"play" else "pause";pause.invalidate()
+        pause.icon=if(p?.playWhenReady==false)"play" else "pause";pause.invalidate()
     }
     override fun onAttachedToWindow(){super.onAttachedToWindow();attached=true;main.post(tick);show()}
     override fun onDetachedFromWindow(){attached=false;main.removeCallbacksAndMessages(null);super.onDetachedFromWindow()}

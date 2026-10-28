@@ -65,7 +65,7 @@ class PlaybackSession(private val context:Context, private val repositoryProvide
         when(event.keyCode){
             KeyEvent.KEYCODE_CHANNEL_UP->{if(entry?.kind=="live"){zap?.invoke(1);return true}}
             KeyEvent.KEYCODE_CHANNEL_DOWN->{if(entry?.kind=="live"){zap?.invoke(-1);return true}}
-            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE->{if(p.isPlaying)p.pause() else p.play();return true}
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE->{if(p.playWhenReady)p.pause() else p.play();return true}
             KeyEvent.KEYCODE_MEDIA_PLAY->{p.play();return true}
             KeyEvent.KEYCODE_MEDIA_PAUSE->{p.pause();return true}
             KeyEvent.KEYCODE_CAPTIONS->{tracks(C.TRACK_TYPE_TEXT);return true}
