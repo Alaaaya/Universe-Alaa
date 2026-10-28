@@ -9,7 +9,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 class UniverseScreen(context:Context): FrameLayout(context) {
-    var theme="blue"
+    var theme="gold"
     var arabic=false
     var fixedClock:String?=null
     var page="home";private set
@@ -90,7 +90,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
     }
     private fun themeDialog() {
         android.app.AlertDialog.Builder(context).setTitle(if(arabic)"المظهر" else "Theme")
-            .setItems(arrayOf("Blue","Royal Blue","Gold")){_,i->theme=listOf("blue","royal","gold")[i];home()}.show()
+            .setItems(arrayOf("Gold","Blue","Royal Blue")){_,i->theme=listOf("gold","blue","royal")[i];home()}.show()
     }
     fun categories() {
         page="categories";drawer=true;fullscreen=false;reset(true)
@@ -159,7 +159,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         val preview=button("",960,251,935,526){showFullscreen()}
         preview.background=surface(Color.BLACK)
         text(if(arabic)"لا يوجد بث متصل" else "No stream connected",1030,470,790,70,32f,0xff7f91a8.toInt(),true)
-        stage.put(View(context).apply{setBackgroundColor(0xff061426.toInt())},960,777,935,80)
+        stage.put(View(context).apply{setBackgroundColor(if(theme=="gold")0xff161309.toInt() else 0xff061426.toInt())},960,777,935,80)
         text(names[selectedChannel],978,787,750,70,31f).typeface=Typeface.DEFAULT_BOLD
         favorite=button(if(selectedChannel in favorites)"♥" else "♡",1775,787,110,70,47f){
             if(!favorites.add(selectedChannel))favorites.remove(selectedChannel);live()

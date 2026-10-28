@@ -20,7 +20,7 @@ class PhaseOneTest {
  private fun key(a:HomeActivity,c:Int){a.dispatchKeyEvent(KeyEvent(0,c));a.dispatchKeyEvent(KeyEvent(1,c));layout(a)}
  private fun shot(a:HomeActivity,n:String){layout(a);val b=Bitmap.createBitmap(1920,1080,Bitmap.Config.ARGB_8888);a.screen.draw(Canvas(b));File("/home/kit/tmp/ua/blue-shots").mkdirs();File("/home/kit/tmp/ua/blue-shots/$n.png").outputStream().use{b.compress(Bitmap.CompressFormat.PNG,100,it)}}
  @Test fun homeNavigationAndThemes(){
-  val a=activity();shot(a,"home-en")
+  val a=activity();assertEquals("gold",a.screen.theme);shot(a,"home-en");shot(a,"home-gold")
   val labels=mutableSetOf(a.screen.findFocus()?.contentDescription.toString())
   repeat(5){key(a,22);labels.add(a.screen.findFocus()?.contentDescription.toString())}
   assertEquals(6,labels.size)
