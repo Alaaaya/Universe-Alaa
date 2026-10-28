@@ -13,6 +13,10 @@ class PrayerBackdrop(c:Context):View(c) {
   val p=Paint(Paint.ANTI_ALIAS_FLAG)
   p.shader=LinearGradient(0f,0f,0f,height.toFloat(),intArrayOf(0x5500081a,0x00000000,0x88000616.toInt()),null,Shader.TileMode.CLAMP)
   canvas.drawRect(0f,0f,width.toFloat(),height.toFloat(),p)
+  // The wallpaper itself contains colored patio lights. Mask the entire floor,
+  // not just UI reflection layers, so nothing below the tiles resembles a mirror.
+  p.shader=LinearGradient(0f,height*.72f,0f,height*.795f,intArrayOf(0x00000000,Color.BLACK),null,Shader.TileMode.CLAMP)
+  canvas.drawRect(0f,height*.72f,width.toFloat(),height.toFloat(),p)
  }
 }
 class MosqueArt(c:Context):View(c){
@@ -36,16 +40,6 @@ class MosqueArt(c:Context):View(c){
  }
 }
 
-/** Decorative light only; never consumes D-pad focus. */
-class TileLight(c:Context,val tint:Int):View(c){
- override fun onDraw(c:Canvas){
-  val p=Paint(Paint.ANTI_ALIAS_FLAG)
-  c.save();c.scale(1f,height.toFloat()/width)
-  p.shader=RadialGradient(width*.5f,width*.25f,width*.52f,intArrayOf((tint and 0xffffff) or 0xb0000000.toInt(),(tint and 0xffffff) or 0x55000000,tint and 0xffffff),floatArrayOf(0f,.4f,1f),Shader.TileMode.CLAMP)
-  c.drawRect(0f,0f,width.toFloat(),width.toFloat(),p);c.restore()
- }
-}
-
 class PrayerSymbol(c:Context,val index:Int):View(c){
  override fun onDraw(c:Canvas){
   c.save();c.scale(width/64f,height/40f)
@@ -57,21 +51,6 @@ class PrayerSymbol(c:Context,val index:Int):View(c){
    if(index==0||index==3){p.color=0xffbcecff.toInt();c.drawLine(7f,27f,55f,27f,p);c.drawLine(15f,33f,49f,33f,p)}
    if(index==2){p.color=0xffd5ecff.toInt();p.style=Paint.Style.FILL;c.drawOval(24f,20f,59f,34f,p);c.drawCircle(37f,22f,9f,p)}
   };c.restore()
- }
-}
-class MirrorTile(c:Context,val icon:Int,val label:String,val tint:Int):View(c){
- override fun onDraw(c:Canvas){
-  val layer=c.saveLayer(0f,0f,width.toFloat(),height.toFloat(),null)
-  c.save();c.translate(0f,height.toFloat());c.scale(1f,-.55f)
-  val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=(tint and 0xffffff) or 0x66000000}
-  c.drawRoundRect(2f,0f,width-2f,296f,24f,24f,p)
-  p.color=tint;p.style=Paint.Style.STROKE;p.strokeWidth=2f;c.drawRoundRect(2f,0f,width-2f,296f,24f,24f,p)
-  val d=context.getDrawable(icon)!!;d.setTint(Color.WHITE);d.setBounds(width/2-54,45,width/2+54,153);d.draw(c)
-  p.style=Paint.Style.FILL;p.color=Color.WHITE;p.textSize=27f;p.textAlign=Paint.Align.CENTER;c.drawText(label,width/2f,245f,p)
-  c.restore()
-  p.shader=LinearGradient(0f,0f,0f,height.toFloat(),intArrayOf(0x00ffffff,0x99ffffff.toInt()),null,Shader.TileMode.CLAMP)
-  p.xfermode=PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
-  c.drawRect(0f,0f,width.toFloat(),height.toFloat(),p);c.restoreToCount(layer)
  }
 }
 class NeonRim(c:Context,val tint:Int):View(c){
