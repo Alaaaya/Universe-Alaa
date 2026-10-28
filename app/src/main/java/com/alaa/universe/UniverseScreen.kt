@@ -10,6 +10,7 @@ import java.util.*
 
 class UniverseScreen(context:Context): FrameLayout(context) {
     var theme="red"
+    var homeTheme=context.getSharedPreferences("appearance",0).getString("home","classic")!!
     var arabic=false
     var fixedClock:String?=null
     var page="home";private set
@@ -37,7 +38,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
     }
     private fun text(value:String,x:Int,y:Int,w:Int,h:Int,size:Float=28f,color:Int=textColor,center:Boolean=false):TextView {
         val v=TextView(context).apply{
-            text=value;setTextColor(if(theme=="red" && color!=accent)Color.WHITE else color);gravity=if(center)Gravity.CENTER else Gravity.CENTER_VERTICAL
+            text=value;setTextColor(if(theme=="red" && !(page=="home"&&homeTheme=="prayer") && color!=accent)Color.WHITE else color);gravity=if(center)Gravity.CENTER else Gravity.CENTER_VERTICAL
             typeface=Typeface.create("sans-serif",Typeface.NORMAL);includeFontPadding=false
             maxLines=1;ellipsize=TextUtils.TruncateAt.END;layoutDirection=View.LAYOUT_DIRECTION_LTR
             textDirection=View.TEXT_DIRECTION_FIRST_STRONG
@@ -62,6 +63,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
     private fun ids():List<Int> = order.filter{when(selectedCategory){1->it in favorites;2->it in recents;0->true;else->it%7==selectedCategory-3}}
     fun home() {
         page="home";drawer=false;fullscreen=false;reset()
+        if(homeTheme=="prayer"){prayerHome();return}
         text("Alaa",54,43,250,38,25f,0xff9aaec8.toInt())
         text(clock(),338,43,180,38,25f,0xff9aaec8.toInt())
         val date=if(fixedClock!=null)"28 October 2026" else SimpleDateFormat("dd MMMM yyyy",Locale.getDefault()).format(Date())
@@ -88,12 +90,71 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         cards.forEachIndexed{i,v->v.nextFocusUpId=v.id;v.nextFocusDownId=v.id;v.nextFocusLeftId=cards[maxOf(0,i-1)].id;v.nextFocusRightId=cards[minOf(5,i+1)].id}
         focus(cards[homeIndex])
     }
+
+    private var prayerTickCount=0
+    private val prayerTick=object:Runnable{
+        override fun run(){if(homeTheme=="prayer"&&page=="home")home();if(++prayerTickCount%15==0)PrayerTimes.refresh(context){};postDelayed(this,60000)}
+    }
+    override fun onAttachedToWindow(){
+        super.onAttachedToWindow();postDelayed(prayerTick,60000)
+        PrayerTimes.refresh(context){post{if(isAttachedToWindow&&homeTheme=="prayer"&&page=="home")home()}}
+    }
+    override fun onDetachedFromWindow(){removeCallbacks(prayerTick);super.onDetachedFromWindow()}
+    private fun glass(color:Int,stroke:Int,radius:Float=24f)=surface(color,stroke).apply{cornerRadius=radius}
+    private fun prayerHome(){
+        stage.put(PrayerBackdrop(context),0,0,1920,1080)
+        stage.put(View(context).apply{background=glass(0xb215233a.toInt(),0x8875b5ed.toInt())},24,22,1872,176)
+        text("AP",49,52,100,105,48f,Color.WHITE,true).apply{background=glass(0x99465478.toInt(),0x6673a6c6);typeface=Typeface.DEFAULT_BOLD}
+        text("Alaa",174,46,340,39,29f,Color.WHITE)
+        val df=SimpleDateFormat("dd MMMM yyyy",Locale.ENGLISH).apply{timeZone=TimeZone.getTimeZone("Europe/Berlin")}
+        text(df.format(Date()),174,91,350,30,22f,Color.WHITE)
+        text("(Days Left: —)",174,135,340,30,21f,Color.WHITE)
+        text(fixedClock?:SimpleDateFormat("HH:mm",Locale.US).apply{timeZone=TimeZone.getTimeZone("Europe/Berlin")}.format(Date()),560,58,250,75,56f,Color.WHITE,true).typeface=Typeface.DEFAULT_BOLD
+        text("—",560,133,250,28,25f,Color.WHITE,true)
+        stage.put(MosqueArt(context),819,43,200,130)
+        text("Mülheim · مسجد الرحمة",1045,36,800,36,25f,Color.WHITE,true)
+        val state=PrayerTimes.snapshot(context)
+        val names=listOf("الفجر","الظهر","العصر","المغرب","العشاء")
+        for(i in 0..4){
+            val x=1045+i*166
+            stage.put(View(context).apply{background=glass(if(state?.next==i)0x55137ca8 else 0x33090f24,if(state?.next==i)0xff36d5ff.toInt() else 0x226a87a7,16f)},x,82,156,99)
+            text(names[i],x,88,156,40,23f,Color.WHITE,true)
+            text(state?.values?.get(i)?:"--:--",x,131,156,36,29f,Color.WHITE,true)
+        }
+        if(state==null||state.stale)text(if(state==null)"Prayer times unavailable" else "Offline · last saved times",1110,202,700,30,20f,Color.WHITE,true)
+        stage.put(AlaaMark(context,0xffd96af6.toInt()),633,326,115,115)
+        text("universe-",770,341,330,84,58f,Color.WHITE).apply{typeface=Typeface.DEFAULT_BOLD;setShadowLayer(12f,0f,3f,Color.BLACK)}
+        text("Alaa",1100,341,250,84,58f,0xff37c5ff.toInt()).apply{typeface=Typeface.DEFAULT_BOLD;setShadowLayer(12f,0f,3f,Color.BLACK)}
+        val colors=listOf(0xff169bff.toInt(),0xffff832a.toInt(),0xffb34ef0.toInt(),0xff22d5dc.toInt(),0xffee65bf.toInt(),0xff46dd93.toInt())
+        val labels=listOf("Live TV","Movies","Series","Change Server","Settings","Refresh Playlist")
+        val icons=listOf(R.drawable.ic_live_tv,R.drawable.ic_movie,R.drawable.ic_video_library,R.drawable.ic_subscriptions,R.drawable.ic_settings,R.drawable.ic_refresh)
+        val cards=labels.mapIndexed{i,label->
+            val x=44+i*309;val color=colors[i]
+            stage.put(TileLight(context,color),x-12,824,311,178)
+            val v=button("",x,560,287,296){
+                homeIndex=i;when(i){0->categories();1->catalogue(false);2->catalogue(true);4->themeDialog();else->Toast.makeText(context,"Not connected",Toast.LENGTH_SHORT).show()}
+            }
+            v.contentDescription=label
+            fun paint(f:Boolean){v.background=android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,intArrayOf((color and 0x00ffffff) or (if(f)0xaa000000.toInt() else 0x55000000),(color and 0x00ffffff) or 0x44000000)).apply{cornerRadius=26f;setStroke(if(f)5 else 2,if(f)color else (color and 0xffffff) or 0x99000000.toInt())}}
+            paint(false);v.setOnFocusChangeListener{_,f->paint(f)}
+            stage.put(ImageView(context).apply{setImageResource(icons[i]);setColorFilter(Color.WHITE);alpha=.95f},x+82,604,123,123)
+            text(label,x+7,762,273,62,29f,Color.WHITE,true).typeface=Typeface.DEFAULT_BOLD
+            stage.put(View(context).apply{background=glass(color,color,5f)},x+88,840,110,6)
+            // Color light reflections on the polished terrace.
+            stage.put(View(context).apply{background=android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,intArrayOf((color and 0xffffff) or 0x44000000,0x00000000)).apply{cornerRadius=22f}},x+5,864,277,128)
+            v
+        }
+        cards.forEachIndexed{i,v->v.nextFocusLeftId=cards[maxOf(0,i-1)].id;v.nextFocusRightId=cards[minOf(5,i+1)].id;v.nextFocusUpId=v.id;v.nextFocusDownId=v.id}
+        text("≡   Playlist: —",57,971,340,64,26f,Color.WHITE,true).background=glass(0x99070d1d.toInt(),0x778f9fae,32f)
+        focus(cards[homeIndex])
+    }
     private fun themeDialog() {
         page="themes";reset()
         text(if(arabic)"المظهر" else "Theme",100,80,1300,100,56f)
-        val labels=listOf("Red","Gold","Blue","Royal Blue")
+        val labels=listOf("Red","Gold","Blue","Royal Blue","Sunset Prayer")
         val rows=labels.mapIndexed{i,label->button(label,100,250+i*125,900,100,40f){
-            theme=listOf("red","gold","blue","royal")[i];home()
+            if(i==4)homeTheme="prayer" else {homeTheme="classic";theme=listOf("red","gold","blue","royal")[i]}
+            context.getSharedPreferences("appearance",0).edit().putString("home",homeTheme).apply();home()
         }}
         chain(rows);focus(rows[listOf("red","gold","blue","royal").indexOf(theme).coerceAtLeast(0)])
 

@@ -19,6 +19,23 @@ class PhaseOneTest {
  private fun layout(a:HomeActivity){a.screen.measure(View.MeasureSpec.makeMeasureSpec(1920,1073741824),View.MeasureSpec.makeMeasureSpec(1080,1073741824));a.screen.layout(0,0,1920,1080);shadowOf(Looper.getMainLooper()).idle()}
  private fun key(a:HomeActivity,c:Int){a.dispatchKeyEvent(KeyEvent(0,c));a.dispatchKeyEvent(KeyEvent(1,c));layout(a)}
  private fun shot(a:HomeActivity,n:String){layout(a);val b=Bitmap.createBitmap(1920,1080,Bitmap.Config.ARGB_8888);a.screen.draw(Canvas(b));File("/home/kit/tmp/ua/red-shots").mkdirs();File("/home/kit/tmp/ua/red-shots/$n.png").outputStream().use{b.compress(Bitmap.CompressFormat.PNG,100,it)}}
+
+ @Test fun prayerTheme(){
+  val a=activity()
+  val config=PrayerTimes.extract(File("/home/kit/tmp/ua/mawaqit.html").readText())
+  val key=PrayerTimes.date()
+  assertEquals(5,PrayerTimes.times(config,key,key)!!.size)
+  a.getSharedPreferences("prayer-cache",0).edit().putString("config",config.toString()).putString("date",key).commit()
+  assertNotNull(PrayerTimes.snapshot(a))
+  assertEquals(5,PrayerTimes.times(config,"2026-10-29","2026-10-28")!!.size)
+  assertNull(PrayerTimes.times(org.json.JSONObject("{}"),key,key))
+  a.screen.homeTheme="prayer";a.screen.fixedClock=null;a.screen.home();layout(a)
+  val b=Bitmap.createBitmap(1920,1080,Bitmap.Config.ARGB_8888);a.screen.draw(Canvas(b))
+  File("/home/kit/tmp/ua/prayer-theme/home.png").outputStream().use{b.compress(Bitmap.CompressFormat.PNG,100,it)}
+  val stage=a.screen.getChildAt(0) as android.view.ViewGroup
+  val settings=(0 until stage.childCount).map{stage.getChildAt(it)}.first{it.contentDescription=="Settings"}
+  assertTrue(settings.requestFocus());key(a,23);assertEquals("themes",a.screen.page);a.finish()
+ }
  @Test fun redAllScreens(){
   val a=activity();assertEquals("red",a.screen.theme)
   shot(a,"home");a.screen.categories();shot(a,"categories");a.screen.live();shot(a,"channels")
