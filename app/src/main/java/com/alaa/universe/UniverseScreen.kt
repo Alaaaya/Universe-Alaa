@@ -137,7 +137,6 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         val icons=listOf(R.drawable.ic_live_tv,R.drawable.ic_movie,R.drawable.ic_video_library,R.drawable.ic_server,R.drawable.ic_settings,R.drawable.ic_refresh)
         val cards=labels.mapIndexed{i,label->
             val x=44+i*309;val color=colors[i]
-            stage.put(TileLight(context,color),x-12,824,311,178)
             val rim=NeonRim(context,color);stage.put(rim,x-17,543,321,330)
             val v=button("",x,560,287,296){
                 homeIndex=i;when(i){0->categories();1->catalogue(false);2->catalogue(true);4->themeDialog();else->Toast.makeText(context,"Not connected",Toast.LENGTH_SHORT).show()}
@@ -154,8 +153,6 @@ class UniverseScreen(context:Context): FrameLayout(context) {
             stage.put(GlassContour(context,color,5f),x+68,821,150,43)
             stage.put(View(context).apply{background=glass(color,color,5f)},x+88,840,110,7)
 
-            // Color light reflections on the polished terrace.
-            stage.put(View(context).apply{background=android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,intArrayOf((color and 0xffffff) or 0x44000000,0x00000000)).apply{cornerRadius=22f}},x+5,864,277,128)
             v
         }
         cards.forEachIndexed{i,v->v.nextFocusLeftId=cards[maxOf(0,i-1)].id;v.nextFocusRightId=cards[minOf(5,i+1)].id;v.nextFocusUpId=v.id;v.nextFocusDownId=v.id}
