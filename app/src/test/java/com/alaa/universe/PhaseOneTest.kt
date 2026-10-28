@@ -97,6 +97,21 @@ class PhaseOneTest {
         capture(a,"live-empty")
         a.finish()
     }
+    @Test fun scrollEveryChannelAndReturnFocus() {
+        val a=activity();a.screen.live();layout(a)
+        val visited=mutableSetOf(label(a))
+        repeat(11){key(a,KeyEvent.KEYCODE_DPAD_DOWN);visited.add(label(a))}
+        assertEquals(12,visited.size)
+        assertTrue(label(a).contains("Alaa Classic"))
+        capture(a,"live-scrolled")
+        val previous=label(a)
+        key(a,KeyEvent.KEYCODE_DPAD_RIGHT)
+        key(a,KeyEvent.KEYCODE_DPAD_LEFT)
+        assertEquals(previous,label(a))
+        repeat(11){key(a,KeyEvent.KEYCODE_DPAD_UP)}
+        assertTrue(label(a).contains("Alaa One"))
+        a.finish()
+    }
     @Test fun reconstructedReferenceDiagrams() {
         // This is an independent diagram from the analyst's proportions, NOT an original APK screenshot.
         for (home in listOf(true,false)) {

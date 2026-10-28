@@ -120,7 +120,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
                     focusChannel=index
                     when(code) {
                         KeyEvent.KEYCODE_DPAD_LEFT -> { live(true);true }
-                        KeyEvent.KEYCODE_DPAD_RIGHT -> { favorite?.requestFocus();true }
+                        KeyEvent.KEYCODE_DPAD_RIGHT -> { favorite?.nextFocusLeftId=v.id;favorite?.requestFocus();true }
                         KeyEvent.KEYCODE_DPAD_DOWN -> if(row==8 && channelOffset+9<ids.size) {channelOffset++;focusChannel=ids[minOf(ids.lastIndex,channelOffset+8)];live();true} else false
                         KeyEvent.KEYCODE_DPAD_UP -> if(row==0 && channelOffset>0) {channelOffset--;focusChannel=ids[channelOffset];live();true} else false
                         else -> false
@@ -128,6 +128,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
                 } else false
             };v
         }
+        text(if(ids.isEmpty()) "0 / 0" else "${channelOffset+1}–${minOf(channelOffset+9,ids.size)} / ${ids.size}",60,939,854,34,23f,grey)
         if(ids.isEmpty()) text(if(arabic)"لا توجد قنوات بهذا القسم" else "No channels in this category",60,310,854,80,29f,grey,true)
         val preview=button("",960,177,902,515){showFullscreen()}
         preview.background=surface(Color.BLACK,0xff303030.toInt())
