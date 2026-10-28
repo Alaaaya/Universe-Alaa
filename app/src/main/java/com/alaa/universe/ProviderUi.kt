@@ -238,7 +238,7 @@ class ProviderUi(private val screen:UniverseScreen) {
             button(if(live)e.name else "",x,y,w,h){
                 selected=e;recents.add(identity(e));saveState()
                 when(e.kind){
-                    "live"->{if(playback.entry?.id==e.id)fullscreen() else {playback.play(e);nextCardFocus=i;browse("live")}}
+                    "live"->{if(playback.entry?.id==e.id)fullscreen() else {playChecked(e);nextCardFocus=i;browse("live")}}
                     "series"->{season=0;seasonOffset=0;episodeOffset=0;episodeList=emptyList();screen.seriesDetail()}
                     else->screen.movieDetail()
                 }
@@ -286,7 +286,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         if(list.isEmpty())return
         val at=list.indexOfFirst{it.id==playback.entry?.id}
         selected=list[Math.floorMod(at+delta,list.size)]
-        selected?.let{playback.play(it);recents.add(identity(it));saveState()}
+        selected?.let{playChecked(it);recents.add(identity(it));saveState()}
         if(full)fullscreen() else browse("live")
     }
     fun detail(series:Boolean){
@@ -297,7 +297,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         artwork(e,85,205,530,620)
         if(!series){
             text(e.plot.ifBlank{"Movie from your connected playlist"},720,220,1100,400,33f).apply{maxLines=8;gravity=Gravity.TOP}
-            val play=button("Play Movie",720,800,480,90){playback.play(e);fullscreen()}
+            val play=button("Play Movie",720,800,480,90){playChecked(e);fullscreen()}
             val fav=button(if(identity(e) in favorites)"Remove Favorite" else "Add Favorite",1230,800,570,90){if(!favorites.add(identity(e)))favorites.remove(identity(e));saveState();detail(false)}
             play.nextFocusRightId=fav.id;fav.nextFocusLeftId=play.id;focus(play)
         } else {
@@ -331,7 +331,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         val all=episodeList.filter{it.season==season}
         episodeOffset=episodeOffset.coerceIn(0,maxOf(0,all.size-1))
         val eps=all.drop(episodeOffset).take(10).mapIndexed{i,e->
-            button(e.name,620,180+i*76,1210,70){recents.add(identity(e));saveState();playback.play(e);fullscreen()}.also{v->
+            button(e.name,620,180+i*76,1210,70){recents.add(identity(e));saveState();playChecked(e);fullscreen()}.also{v->
                 v.setOnKeyListener{_,key,event->if(event.action!=0)false
                 else if(key==20&&i==9&&episodeOffset+10<all.size){episodeOffset+=10;nextEpisodeFocus=0;renderEpisodes();true}
                 else if(key==19&&i==0&&episodeOffset>0){episodeOffset=maxOf(0,episodeOffset-10);nextEpisodeFocus=9;renderEpisodes();true}else false}
@@ -351,10 +351,17 @@ class ProviderUi(private val screen:UniverseScreen) {
         button("Audio / Subtitles",1450,10,430,65){playback.trackMenu()}
         target.requestFocus();target.showController()
     }
-    fun key(event:KeyEvent)=full&&playback.key(event)
+    fun key(event:KeyEvent):Boolean {
+        if(panelSelected && !panel.tick())return true
+        return full&&playback.key(event)
+    }
     fun back():Boolean{
         if(full){full=false;if(mode=="live")browse(mode) else {playback.stop();if(mode=="series")renderEpisodes() else detail(false)};return true}
         return false
+    }
+    private fun playChecked(entry:MediaEntry) {
+        if(panelSelected && !panel.tick())return
+        playback.play(entry)
     }
     fun stop(){foreground=false;main.removeCallbacks(panelTick);main.removeCallbacks(panelPoll);detailGeneration++;playback.stop();if(full){full=false;screen.home()}}
     fun close(){closed=true;if(!testMode)panel.close();panelNetwork.shutdownNow();panelLoads.shutdownNow();main.removeCallbacks(panelTick);main.removeCallbacks(panelPoll);generation++;playback.stop();pictures.forEach{com.bumptech.glide.Glide.with(context).clear(it)};pictures.clear();worker.shutdownNow()}

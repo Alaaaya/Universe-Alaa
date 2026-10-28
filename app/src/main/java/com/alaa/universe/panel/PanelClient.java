@@ -18,6 +18,8 @@ public final class PanelClient {
     private final SecureRandom random;
     private final Listener listener;
     private JSONObject state;
+    private boolean freshDelivery;
+    public synchronized boolean isFreshDelivery() { return freshDelivery; }
     public PanelClient(Store store, Transport transport, Clock clock, SecureRandom random, Listener listener) {
         this.store=store; this.transport=transport; this.clock=clock; this.random=random; this.listener=listener;
     }
@@ -100,7 +102,9 @@ public final class PanelClient {
                     }
                     state.put("everActive",true).put("pendingProof",false).put("cache",r).put("cachedAt",now);
                     state.remove("blocked"); resetBackoff();
-                    listener.onConfig(new JSONObject(r.toString())); return;
+                    freshDelivery=true;
+                    try { listener.onConfig(new JSONObject(r.toString())); } finally { freshDelivery=false; }
+                    return;
                 case "pending":
                     if(state.optBoolean("everActive")) { stop("pairing_required"); return; }
                     state.put("pendingProof",true); stop("pending"); resetBackoff(); return;

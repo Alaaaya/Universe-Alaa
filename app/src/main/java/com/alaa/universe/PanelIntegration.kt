@@ -25,6 +25,8 @@ internal class PanelIntegration(
     private var wallDeadline=0L
     private var elapsedDeadline=0L
     private var lastWall=0L
+    private var leaseSeen=false
+    private var cacheRejected=false
     @Volatile var ownsProvider=false; private set
     @Volatile var code=""; private set
     @Volatile var status="Waiting for activation"; private set
@@ -50,11 +52,18 @@ internal class PanelIntegration(
                 // Admin-provisioned HTTP is explicit, unlike an untrusted redirect.
                 (if(type=="m3u")value("url") else value("server")).startsWith("http://",true))
             ProviderRepository.validateLogin(login)
+            val fresh=client.isFreshDelivery()
             val remaining=client.leaseRemainingMillis()
             require(remaining>0)
             synchronized(lock) {
                 if(closed)return
-                wallDeadline=wall()+remaining;elapsedDeadline=elapsed()+remaining;lastWall=wall()
+                if(!fresh && (cacheRejected || (leaseSeen && !valid()))) {
+                    deny("cache_expired");return
+                }
+                if(fresh || !leaseSeen) {
+                    wallDeadline=wall()+remaining;elapsedDeadline=elapsed()+remaining;lastWall=wall()
+                    leaseSeen=true;cacheRejected=false
+                }
                 val key=p.toString()
                 if(configKey==key && ownsProvider)return
                 ++generation
@@ -79,7 +88,12 @@ internal class PanelIntegration(
             }
         } catch(_:Exception) { deny("invalid_config") }
     }
-    private fun valid():Boolean = ownsProvider && wall()>=lastWall && wall()<wallDeadline && elapsed()<elapsedDeadline
+    private fun valid():Boolean {
+        val now=wall()
+        val ok=ownsProvider && now>=lastWall && now<wallDeadline && elapsed()<elapsedDeadline
+        if(ok)lastWall=now
+        return ok
+    }
     /** Main thread every second, and before any play/reopen. Never waits on panel networking. */
     fun tick():Boolean {
         synchronized(lock) {
@@ -89,6 +103,7 @@ internal class PanelIntegration(
     }
     private fun deny(reason:String) {
         synchronized(lock) {
+            cacheRejected=true
             ++generation;configKey=null;wallDeadline=0;elapsedDeadline=0
             val wasOwned=ownsProvider;ownsProvider=false
             status=when(reason){"pending"->"Waiting for activation";"expired","cache_expired"->"Subscription expired";else->"Subscription unavailable"}

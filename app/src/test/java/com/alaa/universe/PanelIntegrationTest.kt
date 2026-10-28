@@ -28,6 +28,7 @@ class PanelIntegrationTest {
     private var expires: Any = JSONObject.NULL
     private var password = "fixture-password"
     private var calls = 0
+    private var offline=false
     private val queue = ArrayDeque<Runnable>()
     private var queued = false
     private var stoppedCount = 0
@@ -37,6 +38,7 @@ class PanelIntegrationTest {
     private fun vault() = CredentialVault(context) { SecretKeySpec(ByteArray(16) { 7 }, "AES") }
     private val wire = PanelClient.Transport { fn, req ->
         calls++
+        if(offline)throw java.io.IOException()
         if (fn == "register_device_v2") return@Transport JSONObject().put("status", "registered")
         val r = JSONObject().put("status", status)
         if (status == "active") r.put("device_code", req.getString("p_device_code")).put("app_type", "universe").put("expires_at", expires)
@@ -98,8 +100,32 @@ class PanelIntegrationTest {
         tick += 11_000; // wall clock changed backwards must not extend monotonic lease
         wall -= 100_000
         assertFalse("tick", p.tick())
-        assertTrue("stopped", stoppedCount >= 0)
+        assertTrue("stopped", stoppedCount >= 1)
         assertNull("login", repo.login())
+    }
+
+    @Test fun cachedReopenAfterMonotonicDeadlineCannotRenewAndFreshCanRecover() {
+        status="active"; val p=integration();p.open();offline=true
+        tick+=86_400_001L
+        wall+=1_000 // cache still looks young to the wall clock
+        p.open()
+        assertFalse(p.ownsProvider);assertNull(repo.login())
+        p.open();assertFalse(p.tick())
+        offline=false;wall+=3_600_001;tick+=3_600_001;p.open()
+        assertTrue(p.tick());assertNotNull(repo.login())
+    }
+    @Test fun rollbackObservedOnCachedReopenCannotRenew() {
+        status="active";val p=integration();p.open();offline=true
+        wall+=60_000;tick+=60_000;assertTrue(p.tick())
+        wall-=10_000;tick+=1_000
+        p.open()
+        assertFalse(p.tick());assertNull(repo.login())
+        wall+=20_000;p.open();assertFalse(p.ownsProvider)
+    }
+    @Test fun eachTickAdvancesWallHighWaterMark() {
+        status="active";val p=integration();p.open()
+        wall+=10_000;tick+=10_000;assertTrue(p.tick())
+        wall-=1;tick+=1;assertFalse(p.tick());assertNull(repo.login())
     }
     @Test fun manualProviderDataIsNotWipedByPanelDenialInSeparateVault() {
         val manual = ProviderRepository(CredentialVault(context, { SecretKeySpec(ByteArray(16) { 9 }, "AES") }, "manual-test"), { url ->
