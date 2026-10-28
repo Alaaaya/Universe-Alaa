@@ -160,6 +160,7 @@ class ProviderRepositoryTest {
         val repo = ProviderRepository(vault) { url ->
             when {
                 url.contains("get_live_streams") -> body
+                url.contains("get_live_categories") -> """[{"category_id":"7","category_name":"Large fixture"}]"""
                 url.contains("action=") -> "[]"
                 else -> """{"user_info":{"auth":1,"status":"Active"}}"""
             }

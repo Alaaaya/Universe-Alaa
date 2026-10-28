@@ -67,14 +67,30 @@ internal class PanelIntegration(
                     wallDeadline=wall()+remaining;elapsedDeadline=elapsed()+remaining;lastWall=wall()
                     leaseSeen=true;cacheRejected=false
                 }
-                val key=p.toString()
+                val device=config.getString("device_code")
+                val parsed=CategoryPolicy.parse(device,p)
+                val oldPolicy=repository.categoryPolicy()
+                val sameProvider=repository.login()==login
+                val retained=parsed ?: oldPolicy?.takeIf {
+                    sameProvider && repository.hasCompatiblePolicy(device,p.getString("id"),
+                        p.optString("category_provider_generation").takeIf { v -> v.isNotBlank() })
+                }
+                // Unknown schema is not a revocation, nor permission to drop previous hides.
+                if(retained==null) {
+                    status="Category settings unavailable"
+                    if(!sameProvider) { deny("invalid_config");status="Category settings unavailable" }
+                    return
+                }
+                val key=p.toString()+retained.toJson().toString()
                 if(configKey==key && ownsProvider)return
                 ++generation
                 val ticket=generation
-                if(repository.login()!=login)repository.clear()
+                if(!sameProvider)repository.clear()
+                val policyChanged=repository.applyCategoryPolicy(retained)
                 configKey=key;ownsProvider=true;status="Active"
-                // Reserve generation now, not after a possibly slow worker queue.
-                val load=repository.prepareConnect(login)
+                // Policy-only changes keep visible content and fetch category metadata, NOT newly unhidden streams.
+                val load: () -> ProviderSnapshot = if(sameProvider && policyChanged && repository.cached()!=null && type=="xtream")
+                    ({ repository.refreshCategories() }) else repository.prepareConnect(login)
                 main.execute { synchronized(lock) { if(ticket==generation&&!closed) { stopped();changed(null,status) } } }
                 io.execute {
                     val cached=runCatching{repository.cached()}.getOrNull()

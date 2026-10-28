@@ -173,16 +173,23 @@ class ProviderUi(private val screen:UniverseScreen) {
         com.alaa.universe.panel.HttpsPanelTransport(),panelRepository,
         java.util.concurrent.Executor { panelLoads.execute(it) },
         java.util.concurrent.Executor { main.post(it) },
-        changed={value,_->handlePanelChange(value)},stopped={if(panelSelected){generation++;detailGeneration++;playback.stop();snapshot=null}}
+        changed={value,_->handlePanelChange(value)},stopped={if(panelSelected){generation++;detailGeneration++;playback.stop();snapshot=null
+            pictures.forEach{com.bumptech.glide.Glide.with(context).clear(it)};pictures.clear()
+            com.bumptech.glide.Glide.get(context).clearMemory()
+        }}
     ) }
     private fun handlePanelChange(value:ProviderSnapshot?){
             run{
                 val selectedNow=panel.ownsProvider
                 if(selectedNow || panelSelected){
-                    moving=null;clearMoveInput()
+                    moving=null;clearMoveInput();full=false;playback.stop()
                     generation++;detailGeneration++;busy=false
                     panelSelected=selectedNow
                     snapshot=if(selectedNow)value else runCatching{manualRepository.cached()}.getOrNull()
+                    if(selectedNow && value!=null){
+                        val valid=value.entries.mapTo(HashSet()){identity(it)}
+                        recents.retainAll(valid);saveState()
+                    }
                     imageHttpAllowed=runCatching{repository.login()?.allowHttp==true}.getOrDefault(false)
                     episodeList=emptyList();selected=null;currentList=emptyList()
                     if(!closed)screen.home()
@@ -225,6 +232,10 @@ class ProviderUi(private val screen:UniverseScreen) {
     }
     fun refresh(notify:Boolean=true) {
         if(testMode||busy||closed)return
+        if(panelSelected){
+            // Refresh secure policy before starting provider work, never bypass panel hides.
+            panelNetwork.execute{panel.open()}
+        }
         busy=true
         val token=generation
         worker.execute {
@@ -304,10 +315,11 @@ class ProviderUi(private val screen:UniverseScreen) {
         stage!!.put(v,x,y,w,h,size);return v
     }
     private fun artwork(e:MediaEntry,x:Int,y:Int,w:Int,h:Int){
+        if(!testMode && !repository.isVisible(e))return
         val uri=runCatching{ProviderRepository.validatedUrl(e.icon,imageHttpAllowed)}.getOrNull()?:return
         val image=ImageView(context).apply{scaleType=ImageView.ScaleType.FIT_CENTER;isFocusable=false}
         stage!!.put(image,x,y,w,h);pictures.add(image)
-        com.bumptech.glide.Glide.with(context).asBitmap().load(uri.toASCIIString()).diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.NONE).override(w,h).timeout(15000).into(image)
+        com.bumptech.glide.Glide.with(context).asBitmap().load(uri.toASCIIString()).diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.NONE).skipMemoryCache(true).override(w,h).timeout(15000).into(image)
     }
     private fun button(s:String,x:Int,y:Int,w:Int,h:Int,action:()->Unit):TextView=
         text(s,x,y,w,h).apply{
@@ -323,11 +335,25 @@ class ProviderUi(private val screen:UniverseScreen) {
     private fun kindCategories()=snapshot?.categories.orEmpty().filter{it.kind==mode}
     private fun entries():List<MediaEntry> {
         val favoriteEntries=if(category=="favorites")favorites else emptySet<String>()
-        return ordered(snapshot?.entries.orEmpty().filter{it.kind==mode&&when(category){"favorites"->identity(it) in favoriteEntries;"recent"->identity(it) in recents;""->true;else->it.categoryId==category}},false){it.id}
+        return ordered(snapshot?.entries.orEmpty().filter{it.kind==mode&&(testMode||repository.isVisible(it))&&when(category){"favorites"->identity(it) in favoriteEntries;"recent"->identity(it) in recents;""->true;else->it.categoryId==category}},false){it.id}
     }
     fun categories(){
         playback.stop();full=false;mode="live";category="";offset=0;catOffset=0
         browse("live",true)
+    }
+    private fun loadOpenedCategory(c:MediaCategory){
+        if(testMode || c.id.isBlank() || c.id=="favorites" || c.id=="recent" || repository.login()?.m3uUrl?.isNotBlank()==true)return
+        val token=generation
+        val load=runCatching{repository.prepareCategoryLoad(c.kind,c.id)}.getOrNull()?:return
+        worker.execute {
+            val result=runCatching{load()}
+            main.post {
+                if(!closed && token==generation && category==c.id && mode==c.kind){
+                    result.onSuccess{snapshot=it;browse(mode)}
+                    result.onFailure{toast("Category unavailable. Try again.")}
+                }
+            }
+        }
     }
     fun browse(kind:String,categoryOnly:Boolean=false){
         full=false;detailGeneration++
@@ -342,6 +368,7 @@ class ProviderUi(private val screen:UniverseScreen) {
             button(c.name,30,160+i*76,if(categoryOnly)900 else 430,70){
                 category=c.id;offset=0
                 if(categoryOnly)screen.live() else browse(mode)
+                loadOpenedCategory(c)
             }.also{v->bindMove(v,true,c.id);v.setOnKeyListener{_,key,event->
                 if(event.action!=KeyEvent.ACTION_DOWN)false
                 else if(key==20&&i==9&&catOffset+10<cats.size){catOffset++;nextCatFocus=9;browse(mode,categoryOnly);true}
@@ -431,10 +458,13 @@ class ProviderUi(private val screen:UniverseScreen) {
         } else {
             text("Loading seasons and episodes…",720,220,1100,100,36f)
             val id=e.id
+            val selectedRepository=repository
+            val load=runCatching{selectedRepository.prepareEpisodes(e)}.getOrNull()?:return
             worker.execute{
-                val cached=runCatching{repository.cachedEpisodes(e)}.getOrDefault(emptyList())
+                if(closed || detailToken!=detailGeneration)return@execute
+                val cached=runCatching{selectedRepository.cachedEpisodes(e)}.getOrDefault(emptyList())
                 if(cached.isNotEmpty())main.post{if(!closed&&detailToken==detailGeneration&&selected?.id==id&&screen.page=="series-detail"){episodeList=cached;if(!full)renderEpisodes()}}
-                val result=runCatching{repository.episodes(e)}
+                val result=runCatching{load()}
                 main.post{if(!closed&&detailToken==detailGeneration&&selected?.id==id&&screen.page=="series-detail"){
                     result.onSuccess{episodeList=it;season=it.firstOrNull()?.season?:0;seasonOffset=0;episodeOffset=0;if(!full)renderEpisodes()}
                     result.onFailure{if(cached.isEmpty()&&!full)text("Episodes unavailable. Check connection and try again.",720,340,1100,100,30f)}

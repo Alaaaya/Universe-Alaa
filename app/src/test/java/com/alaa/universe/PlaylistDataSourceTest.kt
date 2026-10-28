@@ -42,4 +42,11 @@ class PlaylistDataSourceTest {
   source.open(DataSpec(Uri.parse("https://example.test/third")))
   assertEquals(2,fake.opened.size)
  }
+ @Test fun categoryPolicyBlocksHttpsSegmentsAfterParentBecomesHidden(){
+  val fake=Fake();var visible=true
+  val source=PlaylistDataSource(fake,allowContent={visible}){false}
+  source.open(DataSpec(Uri.parse("https://example.test/first.ts")));visible=false
+  blocked{source.open(DataSpec(Uri.parse("https://example.test/second.ts")))}
+  assertEquals(1,fake.opened.size)
+ }
 }

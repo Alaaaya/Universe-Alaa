@@ -37,7 +37,7 @@ class PlaybackSession(private val context:Context, private val repositoryProvide
             val p=player?:ExoPlayer.Builder(context)
                 .setMediaSourceFactory(DefaultMediaSourceFactory(DataSource.Factory {
                     PlaylistDataSource(DefaultHttpDataSource.Factory().setUserAgent("universe-Alaa/0.2")
-                        .setConnectTimeoutMs(15000).setReadTimeoutMs(20000).setAllowCrossProtocolRedirects(false).createDataSource()) { repository.login()?.allowHttp==true }
+                        .setConnectTimeoutMs(15000).setReadTimeoutMs(20000).setAllowCrossProtocolRedirects(false).createDataSource(), allowContent = { entry?.let { repository.isVisible(it) } == true }) { repository.login()?.allowHttp==true }
                 }))
                 .setSeekBackIncrementMs(10000).setSeekForwardIncrementMs(10000).build().also {
                     player=it

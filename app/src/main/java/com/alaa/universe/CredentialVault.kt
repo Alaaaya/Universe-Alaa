@@ -68,6 +68,10 @@ class CredentialVault internal constructor(context: Context, private val testKey
         } catch (_: Exception) { throw IllegalStateException("Could not securely save provider data.") }
     }
     @Synchronized internal fun delete(name: String) { file(name).delete() }
+    @Synchronized internal fun deletePrefix(prefix: String) {
+        require(Regex("[a-zA-Z0-9_-]+").matches(prefix))
+        root.listFiles()?.filter { it.name.startsWith(prefix) }?.forEach { it.delete() }
+    }
     @Synchronized fun clear() {
         root.listFiles()?.forEach { it.delete() }
         if (testKeyProvider == null) {

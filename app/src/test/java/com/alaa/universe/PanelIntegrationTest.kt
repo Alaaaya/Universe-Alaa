@@ -29,6 +29,8 @@ class PanelIntegrationTest {
     private var password = "fixture-password"
     private var calls = 0
     private var offline=false
+    private var categorySettings:JSONObject?=null
+    private var providerCalls=0
     private val queue = ArrayDeque<Runnable>()
     private var queued = false
     private var stoppedCount = 0
@@ -44,12 +46,16 @@ class PanelIntegrationTest {
         if (status == "active") r.put("device_code", req.getString("p_device_code")).put("app_type", "universe").put("expires_at", expires)
             .put("playlists", JSONArray().put(JSONObject().put("id", "p1").put("name", "Sub").put("type", "xtream").put("url", JSONObject.NULL)
                 .put("epg_url", JSONObject.NULL).put("server", "https://provider.invalid").put("username", "fixture-user").put("password", password)))
+        if(status=="active")categorySettings?.let { settings ->
+            val p=r.getJSONArray("playlists").getJSONObject(0)
+            settings.keys().forEach { key -> p.put(key,settings.get(key)) }
+        }
         r
     }
     @Before fun setup() {
         context = org.robolectric.RuntimeEnvironment.getApplication()
         store = Memory()
-        val fetch: (String) -> String = { url -> if (url.contains("action=")) "[]" else """{"user_info":{"auth":1,"status":"Active","exp_date":"4102444800"}}""" }
+        val fetch: (String) -> String = { url -> providerCalls++; if (url.contains("action=")) "[]" else """{"user_info":{"auth":1,"status":"Active","exp_date":"4102444800"}}""" }
         repo = ProviderRepository(vault(), fetch)
     }
     private fun integration(): PanelIntegration = PanelIntegration(store, wire, repo, deferred, direct, { wall }, { tick },
@@ -148,5 +154,37 @@ class PanelIntegrationTest {
         status = "active"; val p = integration(); p.open()
         status = "inactive"; wall += 61_000; tick += 61_000; p.open()
         assertEquals("Manual", manual.cached()?.name)
+    }
+
+    private fun policy(hidden:Boolean,version:Int=1)=JSONObject().put("category_settings_version",version)
+        .put("category_provider_generation","00000000-0000-0000-0000-000000000001")
+        .put("category_config_revision","hc1_"+(if(hidden)"a" else "b").repeat(64))
+        .put("hidden_category_ids",JSONObject().put("live",JSONArray(if(hidden)listOf("7") else emptyList<String>()))
+            .put("vod",JSONArray()).put("series",JSONArray()))
+    @Test fun malformedAndUnknownSchemaRetainPriorPolicyIncludingAcrossRestart() {
+        status="active";categorySettings=policy(true)
+        val p=integration();p.open()
+        assertEquals(setOf("7"),repo.categoryPolicy()!!.hidden["live"])
+        categorySettings=policy(false,2);wall+=61_000;tick+=61_000;p.open()
+        assertEquals(setOf("7"),repo.categoryPolicy()!!.hidden["live"])
+        p.close()
+        repo=ProviderRepository(vault()){url->if(url.contains("action="))"[]" else """{"user_info":{"auth":1,"status":"Active"}}"""}
+        offline=true;wall+=61_000;tick+=61_000
+        integration().open()
+        assertEquals(setOf("7"),repo.categoryPolicy()!!.hidden["live"])
+    }
+    @Test fun unsupportedPolicyWithNoPriorValidStateDefersEveryProviderRequest() {
+        status="active";categorySettings=policy(true,8)
+        val p=integration();p.open()
+        assertEquals(0,providerCalls);assertNull(repo.login());assertNull(repo.cached());assertFalse(p.ownsProvider)
+        categorySettings=policy(true);wall+=61_000;tick+=61_000;p.open()
+        assertTrue(p.ownsProvider);assertNotNull(repo.cached())
+    }
+    @Test fun offlineDoesNotClearKnownHidesAndExplicitEmptyDoesClearThem() {
+        status="active";categorySettings=policy(true);val p=integration();p.open()
+        offline=true;wall+=61_000;tick+=61_000;p.open()
+        assertEquals(setOf("7"),repo.categoryPolicy()!!.hidden["live"])
+        offline=false;categorySettings=policy(false);wall+=3_600_000;tick+=3_600_000;p.open()
+        assertEquals(emptySet<String>(),repo.categoryPolicy()!!.hidden["live"])
     }
 }
