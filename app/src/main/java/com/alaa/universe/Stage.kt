@@ -12,6 +12,7 @@ class Stage(context: Context): ViewGroup(context) {
     data class Slot(val x:Int,val y:Int,val w:Int,val h:Int,val font:Float?)
     var theme="red"
     var waves=false
+    var transparent=false
     private val slots = mutableMapOf<View,Slot>()
     init { layoutDirection = LAYOUT_DIRECTION_LTR; setWillNotDraw(false) }
     fun put(v: View,x:Int,y:Int,w:Int,h:Int,font:Float?=null): View {
@@ -34,6 +35,7 @@ class Stage(context: Context): ViewGroup(context) {
         }
     }
     override fun onDraw(c:Canvas) {
+        if(transparent)return
         if(theme=="red"){c.drawColor(Color.BLACK);return}
         val p=Paint(Paint.ANTI_ALIAS_FLAG)
         val base=when(theme){"gold"->0xff100f0a.toInt();"royal"->0xff061d55.toInt();else->0xff020b18.toInt()}

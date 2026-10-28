@@ -134,6 +134,7 @@ class ProviderUi(private val screen:UniverseScreen) {
     private var detailGeneration=0
     private var episodeOffset=0
     private var full=false
+    private var fullscreenControls:FullscreenControls?=null
     private var statusView:TextView?=null
     private var stage:Stage?=null
     private val pictures=mutableListOf<ImageView>()
@@ -304,6 +305,7 @@ class ProviderUi(private val screen:UniverseScreen) {
     fun requireConnection():Boolean {if(snapshot!=null)return true;loginDialog();return false}
     private val accent get()=when(screen.theme){"red"->0xffe50914.toInt();"gold"->0xffd8b602.toInt();else->0xff518df4.toInt()}
     private fun reset(){
+        fullscreenControls=null
         moveRows.clear()
         pictures.forEach{com.bumptech.glide.Glide.with(context).clear(it)};pictures.clear()
         screen.removeAllViews()
@@ -501,13 +503,51 @@ class ProviderUi(private val screen:UniverseScreen) {
         focus(if(nextSeasonFocus!=null)rows.getOrNull(nextSeasonFocus!!) else eps.getOrNull((nextEpisodeFocus?:0).coerceAtMost(eps.lastIndex.coerceAtLeast(0)))?:rows.firstOrNull());nextSeasonFocus=null;nextEpisodeFocus=null
     }
     private fun fullscreen(){
+        val item=playback.entry?:return
         if(playback.player==null)return
         full=true;reset()
-        val target=PlayerView(context).apply{useController=true;isFocusable=true;id=View.generateViewId()}
+        val target=PlayerView(context).apply{useController=false;isFocusable=false}
         stage!!.put(target,0,0,1920,1080);playback.attach(target)
-        statusView=text("",80,80,1700,60,27f)
-        button("Audio / Subtitles",1450,10,430,65){playback.trackMenu()}
-        target.requestFocus();target.showController()
+        val parent=selected?.takeIf{it.kind=="series" && item.kind=="episode"}
+        val categoryName=snapshot?.categories?.firstOrNull{it.kind==item.kind && it.id==item.categoryId}?.name.orEmpty()
+        val episodeIndex=episodeList.filter{it.season==item.season}.indexOfFirst{it.id==item.id}
+        val subtitle=when(item.kind){
+            "live"->categoryName.ifBlank{"Live TV"}
+            "episode"->listOfNotNull(parent?.name, "S${item.season}"+if(episodeIndex>=0)"E${episodeIndex+1}" else "", "Episode").joinToString(" · ")
+            else->categoryName.ifBlank{"Movie"}
+        }
+        val favoriteItem=parent?:item
+        val controls=FullscreenControls(context,playback,item,accent,subtitle,identity(favoriteItem) in favorites,
+            leave={back()},previous={skipFullscreen(-1)},next={skipFullscreen(1)},
+            toggleFavorite={
+                if(!favorites.add(identity(favoriteItem)))favorites.remove(identity(favoriteItem))
+                saveState();identity(favoriteItem) in favorites
+            },artwork={image->
+                val art=item.icon.ifBlank{parent?.icon.orEmpty()}
+                val uri=runCatching{ProviderRepository.validatedUrl(art,imageHttpAllowed)}.getOrNull()
+                if(uri!=null && (testMode || repository.isVisible(item))){
+                    pictures.add(image)
+                    com.bumptech.glide.Glide.with(context).asBitmap().load(uri.toASCIIString())
+                        .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.NONE).skipMemoryCache(true)
+                        .override(96,96).timeout(15000).into(image)
+                }
+            })
+        fullscreenControls=controls
+        stage!!.put(controls,0,0,1920,1080)
+        statusView=TextView(context).apply{text="";setTextColor(Color.WHITE);gravity=Gravity.CENTER}
+        controls.stage.put(statusView!!,400,740,1120,60,27f)
+        controls.initialFocus()
+    }
+    private fun skipFullscreen(delta:Int){
+        val item=playback.entry?:return
+        if(item.kind=="live"){zap(delta);return}
+        if(item.kind=="episode"){
+            val at=episodeList.indexOfFirst{it.id==item.id}
+            val next=episodeList.getOrNull(at+delta)
+            if(next!=null){playChecked(next);recents.add(identity(next));saveState();fullscreen()}
+        }else{
+            if(delta<0)playback.player?.seekTo(0) else playback.player?.let{if(it.duration>0)it.seekTo(it.duration)}
+        }
     }
     fun key(event:KeyEvent):Boolean {
         if(panelSelected && !panel.tick())return true
@@ -553,7 +593,16 @@ class ProviderUi(private val screen:UniverseScreen) {
             }
             return true
         }
-        return full&&playback.key(event)
+        if(full && event.action==KeyEvent.ACTION_DOWN){
+            val dpad=key in listOf(KeyEvent.KEYCODE_DPAD_UP,KeyEvent.KEYCODE_DPAD_DOWN,
+                KeyEvent.KEYCODE_DPAD_LEFT,KeyEvent.KEYCODE_DPAD_RIGHT,KeyEvent.KEYCODE_DPAD_CENTER,KeyEvent.KEYCODE_ENTER)
+            if(dpad && fullscreenControls?.reveal()==true)return true
+            if(dpad)return false
+            val handled=playback.key(event)
+            if(handled){fullscreenControls?.show();fullscreenControls?.update()}
+            return handled
+        }
+        return false
     }
     fun back():Boolean{
         if(moving!=null){clearMoveInput();finishMove(false);return true}
