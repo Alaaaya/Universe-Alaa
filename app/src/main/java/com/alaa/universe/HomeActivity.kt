@@ -19,5 +19,13 @@ class HomeActivity : Activity() {
     override fun onStop(){screen.provider.stop();super.onStop()}
     override fun onDestroy(){screen.provider.close();super.onDestroy()}
     @Deprecated("TV Back compatibility")
-    override fun onBackPressed() { if (!screen.back()) super.onBackPressed() }
+    private var lastBack = 0L
+    override fun onBackPressed() {
+        if (screen.back()) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastBack < 2000) { finish(); return }
+        lastBack = now
+        android.widget.Toast.makeText(this, "اضغط رجوع مرة تانية للخروج", android.widget.Toast.LENGTH_SHORT).show()
+        screen.provider.start()
+    }
 }
