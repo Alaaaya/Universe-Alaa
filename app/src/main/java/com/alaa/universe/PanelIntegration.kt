@@ -24,6 +24,7 @@ internal class PanelIntegration(
     private val initialElapsed=elapsed()
     private var generation=0L
     private var configKey:String?=null
+    private var loading=false
     private var wallDeadline=0L
     private var elapsedDeadline=0L
     private var lastWall=0L
@@ -82,15 +83,15 @@ internal class PanelIntegration(
                     return
                 }
                 val key=p.toString()+retained.toJson().toString()
-                if(configKey==key && ownsProvider)return
+                if(configKey==key && ownsProvider && (loading || repository.login()!=null))return
                 ++generation
                 val ticket=generation
                 if(!sameProvider)repository.clear()
                 val policyChanged=repository.applyCategoryPolicy(retained)
-                configKey=key;ownsProvider=true;status="Active"
+                configKey=key;ownsProvider=true;status="Connecting playlist";loading=true
                 // Policy-only changes keep visible content and fetch category metadata, NOT newly unhidden streams.
                 val load: () -> ProviderSnapshot = if(sameProvider && policyChanged && repository.cached()!=null && type=="xtream")
-                    ({ repository.refreshCategories() }) else repository.prepareConnect(login)
+                    ({ repository.refreshCategories() }) else repository.prepareConnect(login, loadAllCategories=false)
                 main.execute { synchronized(lock) { if(ticket==generation&&!closed) { stopped();changed(null,status) } } }
                 io.execute {
                     val cached=runCatching{repository.cached()}.getOrNull()
@@ -100,7 +101,9 @@ internal class PanelIntegration(
                     val result=runCatching{load()}
                     main.execute { synchronized(lock) {
                         if(ticket==generation && !closed && valid()) {
-                            changed(result.getOrNull()?:cached,if(result.isSuccess)"Active" else "Active · provider unavailable")
+                            loading=false
+                            status=if(result.isSuccess)"Active" else "Active · provider unavailable"
+                            changed(result.getOrNull()?:cached,status)
                         }
                     } }
                 }
@@ -123,7 +126,7 @@ internal class PanelIntegration(
     private fun deny(reason:String) {
         synchronized(lock) {
             cacheRejected=true
-            ++generation;configKey=null;wallDeadline=0;elapsedDeadline=0
+            ++generation;configKey=null;loading=false;wallDeadline=0;elapsedDeadline=0
             val wasOwned=ownsProvider;ownsProvider=false
             status=when(reason){"pending"->"Waiting for activation";"expired","cache_expired"->"Subscription expired";else->"Subscription unavailable"}
             // Also removes panel remnants on startup, even when no lease was restored.

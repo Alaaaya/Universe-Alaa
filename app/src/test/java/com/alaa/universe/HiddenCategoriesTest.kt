@@ -227,4 +227,25 @@ class HiddenCategoriesTest {
         val reopened=ProviderRepository(v,::response)
         assertTrue(reopened.connect(login).entries.any{it.kind=="live"&&it.categoryId=="7"})
     }
+    @Test fun boundedPanelStartupNeverFetchesHiddenAndLazyUnhideDoesNotLeak() {
+        val v=vault().also { it.clear() };val requests=mutableListOf<String>()
+        val repo=ProviderRepository(v) { url -> requests+=url;response(url) }
+        repo.applyCategoryPolicy(CategoryPolicy.parse("A",playlist())!!)
+        val snapshot=repo.prepareConnect(login,loadAllCategories=false)()
+        assertEquals(listOf("live:007"),snapshot.entries.map { it.kind+":"+it.categoryId })
+        assertEquals(5,requests.size)
+        assertFalse(requests.any { it.contains("category_id=7") })
+        repo.loadCategory("movie","7")
+        requests.clear()
+        repo.applyCategoryPolicy(CategoryPolicy.parse("A",playlist("""{"live":[],"vod":[],"series":[]}""",'b'))!!)
+        val metadata=repo.refreshCategories()
+        assertEquals(3,requests.size)
+        assertFalse(metadata.entries.any { it.kind=="live" && it.categoryId=="7" })
+        requests.clear()
+        val loaded=repo.loadCategory("live","7")
+        assertEquals(1,requests.size)
+        assertTrue(loaded.entries.any { it.kind=="live" && it.categoryId=="7" })
+        repo.clear()
+    }
+
 }

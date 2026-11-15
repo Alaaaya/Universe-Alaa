@@ -187,4 +187,30 @@ class PanelIntegrationTest {
         offline=false;categorySettings=policy(false);wall+=3_600_000;tick+=3_600_000;p.open()
         assertEquals(emptySet<String>(),repo.categoryPolicy()!!.hidden["live"])
     }
+    @Test fun initialProviderFailureRetriesSameConfigOnNextOpen() {
+        var failures=true
+        repo=ProviderRepository(vault()) { url ->
+            if(failures)throw java.io.IOException()
+            if(url.contains("action="))"[]" else """{"user_info":{"auth":1,"status":"Active"}}"""
+        }
+        status="active"
+        val p=integration();p.open()
+        assertTrue(p.ownsProvider);assertNull(repo.login())
+        assertEquals("Active · provider unavailable",p.status)
+        failures=false;wall+=61_000;tick+=61_000;p.open()
+        assertNotNull(repo.login());assertNotNull(repo.cached());assertEquals("Active",p.status)
+    }
+
+    @Test fun repeatedConfigWhileConnectingDoesNotQueueDuplicateCatalogue() {
+        status="active";queued=true
+        val p=integration();p.open();queue.removeFirst().run()
+        assertEquals("Connecting playlist",p.status)
+        val initial=queue.removeFirst()
+        wall+=61_000;tick+=61_000
+        p.open();queue.removeFirst().run()
+        assertTrue(queue.isEmpty())
+        initial.run()
+        assertNotNull(repo.cached());assertEquals("Active",p.status)
+    }
+
 }

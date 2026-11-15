@@ -236,11 +236,19 @@ class ProviderUi(private val screen:UniverseScreen) {
         if(panelSelected){
             // Refresh secure policy before starting provider work, never bypass panel hides.
             panelNetwork.execute{panel.open()}
+            // Initial panel loading owns its own worker and has not committed a login yet.
+            // Do not turn "Refresh" into an unrelated manual-provider/no-login failure.
+            if(panelRepository.login()==null)return
+        }
+        val target=repository
+        if(target.login()==null) {
+            panelNetwork.execute{panel.open()}
+            return
         }
         busy=true
         val token=generation
         worker.execute {
-            val result=runCatching{repository.refresh()}
+            val result=runCatching{target.refresh(loadAllCategories=target!==panelRepository)}
             main.post {
                 busy=false
                 if(!closed&&token==generation){

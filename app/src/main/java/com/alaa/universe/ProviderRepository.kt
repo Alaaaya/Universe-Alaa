@@ -138,17 +138,17 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
         activeSnapshot
     } }
     fun connect(login: ProviderLogin): ProviderSnapshot = prepareConnect(login).invoke()
-    internal fun prepareConnect(login: ProviderLogin): () -> ProviderSnapshot = safe {
+    internal fun prepareConnect(login: ProviderLogin, loadAllCategories: Boolean = true): () -> ProviderSnapshot = safe {
         validateLogin(login)
         val normalized = login.copy(name = login.name.trim().ifBlank {
             validatedUrl(login.m3uUrl.ifBlank { login.server }, login.allowHttp).host
         })
         val ticket = synchronized(stateLock) { ensureLoaded(); ++generation }
-        val operation: () -> ProviderSnapshot = { safe { loadAndPublish(normalized, ticket) } }
+        val operation: () -> ProviderSnapshot = { safe { loadAndPublish(normalized, ticket, loadAllCategories) } }
         operation
     }
-    private fun loadAndPublish(login: ProviderLogin, ticket: Long): ProviderSnapshot {
-        val result = if (login.m3uUrl.isNotBlank()) parseM3u(fetch(login.m3uUrl, login, ticket), login) else loadXtream(login, ticket)
+    private fun loadAndPublish(login: ProviderLogin, ticket: Long, loadAllCategories: Boolean = true): ProviderSnapshot {
+        val result = if (login.m3uUrl.isNotBlank()) parseM3u(fetch(login.m3uUrl, login, ticket), login) else loadXtream(login, ticket, loadAllCategories)
         persist(login, result, ticket)
         return result
     }
@@ -198,12 +198,12 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
             throw e
         }
     }
-    fun refresh(): ProviderSnapshot = safe {
+    fun refresh(loadAllCategories: Boolean = true): ProviderSnapshot = safe {
         val request = synchronized(stateLock) {
             ensureLoaded()
             (activeLogin ?: error("Connect a provider first.")) to ++generation
         }
-        loadAndPublish(request.first, request.second)
+        loadAndPublish(request.first, request.second, loadAllCategories)
     }
     fun cachedEpisodes(series: MediaEntry): List<MediaEntry> {
         return synchronized(stateLock) {
@@ -257,7 +257,7 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
         invalidate(); vault.clear(); memberships.clear(); policy = null; activeLogin = null; activeSnapshot = null; manifest = null; initialized = true
     }
 
-    private fun loadXtream(l: ProviderLogin, ticket: Long): ProviderSnapshot {
+    private fun loadXtream(l: ProviderLogin, ticket: Long, loadAllCategories: Boolean): ProviderSnapshot {
         val user = validateAuth(JSONObject(fetch(api(l), l, ticket)))
         val categories = mutableListOf<MediaCategory>()
         val entries = mutableListOf<MediaEntry>()
@@ -270,7 +270,24 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
                 if (allowed(kind, listOf(id), ticket)) visible += MediaCategory(id, it.optString("category_name", "Other"), kind)
             }
             categories += visible.distinctBy { it.id }
-            for (category in visible.distinctBy { it.id }) entries += loadCategoryEntries(l, category, streamAction, ticket)
+            if (loadAllCategories) for (category in visible.distinctBy { it.id }) entries += loadCategoryEntries(l, category, streamAction, ticket)
+        }
+        if (!loadAllCategories) {
+            // Panel accounts can expose thousands of categories. Publish metadata and one
+            // live category promptly; category-open already fetches the rest on demand.
+            val previous = synchronized(stateLock) {
+                checkTicket(ticket)
+                if (activeLogin == l) cached() else null
+            }
+            val visible = categories.mapTo(HashSet()) { it.kind to it.id }
+            entries += previous?.entries.orEmpty().filter {
+                (it.kind to it.categoryId) in visible && allowed(it.kind, it.categoryIds, ticket)
+            }
+            val first = categories.firstOrNull { it.kind == "live" }
+            if (first != null) {
+                entries.removeAll { it.kind == first.kind && it.categoryId == first.id }
+                entries += loadCategoryEntries(l, first, "get_live_streams", ticket)
+            }
         }
         val expiry = user.optString("exp_date").toLongOrNull()?.takeIf { it > 0 }
         return ProviderSnapshot(l.name, expiry, mergeMemberships(entries,ticket).filter { allowed(it.kind,it.categoryIds,ticket) }, categories)

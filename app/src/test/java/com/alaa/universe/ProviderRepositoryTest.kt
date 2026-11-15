@@ -225,4 +225,37 @@ class ProviderRepositoryTest {
         assertTrue(emitted > 88782114L)
         vault.clear()
     }
+    @Test fun panelStartupBoundsThousandsOfCategoriesAndRetainsLazyCacheOnRefresh() {
+        val vault = fixtureVault().also { it.clear() }
+        val requests = mutableListOf<String>()
+        val categories = (1..900).joinToString(",", "[", "]") {
+            """{"category_id":"$it","category_name":"Fixture"}"""
+        }
+        val repo = ProviderRepository(vault) { url ->
+            requests += url
+            when {
+                url.contains("categories") -> categories
+                url.contains("action=") -> {
+                    val id = url.substringAfterLast("category_id=")
+                    """[{"stream_id":$id,"series_id":$id,"category_id":"$id","category_ids":[$id],"name":"Fixture"}]"""
+                }
+                else -> """{"user_info":{"auth":1,"status":"Active"}}"""
+            }
+        }
+        val login = ProviderLogin("Panel","https://example.test","u","p")
+        val snapshot = repo.prepareConnect(login,loadAllCategories=false)()
+        assertEquals(2700,snapshot.categories.size)
+        assertEquals(5,requests.size) // auth, three metadata requests, first live category
+        assertEquals(1,snapshot.entries.size)
+        assertEquals(setOf("1"),snapshot.entries.single().categoryIds)
+        repo.loadCategory("movie","2")
+        repo.loadCategory("series","3")
+        requests.clear()
+        val refreshed=repo.refresh(loadAllCategories=false)
+        assertEquals(5,requests.size)
+        assertEquals(setOf("live","movie","series"),refreshed.entries.map { it.kind }.toSet())
+        assertEquals(refreshed,ProviderRepository(vault).cached())
+        repo.clear()
+    }
+
 }
