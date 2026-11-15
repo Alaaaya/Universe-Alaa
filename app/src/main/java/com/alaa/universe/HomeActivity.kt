@@ -15,6 +15,11 @@ class HomeActivity : Activity() {
         setContentView(screen)
         screen.home()
     }
+    override fun dispatchKeyEvent(event:android.view.KeyEvent):Boolean {
+        // Window dispatch can skip an unfocused content tree after controls auto-hide.
+        if(::screen.isInitialized && !screen.previewFixtures && screen.provider.fullscreenKey(event))return true
+        return super.dispatchKeyEvent(event)
+    }
     override fun onStart(){super.onStart();screen.provider.start()}
     override fun onStop(){screen.provider.stop();super.onStop()}
     override fun onDestroy(){screen.provider.close();super.onDestroy()}

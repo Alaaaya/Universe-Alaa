@@ -314,6 +314,8 @@ class ProviderUi(private val screen:UniverseScreen) {
     private val accent get()=when(screen.theme){"red"->0xffe50914.toInt();"gold"->0xffd8b602.toInt();else->0xff518df4.toInt()}
     private fun reset(){
         fullscreenControls=null
+        hiddenRemoteKeys.clear()
+        fullscreenClick=null
         moveRows.clear()
         pictures.forEach{com.bumptech.glide.Glide.with(context).clear(it)};pictures.clear()
         screen.removeAllViews()
@@ -446,13 +448,16 @@ class ProviderUi(private val screen:UniverseScreen) {
         text(if(moving!=null)"↑ ↓ Move   OK Save   BACK Cancel" else "${if(currentList.isEmpty())0 else offset+1}–${offset+items.size} / ${currentList.size}   Hold OK for options   BACK Home",490,1015,1380,45,24f)
         focus(if(nextCatFocus!=null)catRows.getOrNull(nextCatFocus!!) else cards.getOrNull((nextCardFocus?:0).coerceAtMost(cards.lastIndex.coerceAtLeast(0)))?:catRows.firstOrNull());nextCatFocus=null;nextCardFocus=null
     }
-    private fun zap(delta:Int){
-        val list=if(currentList.isEmpty())snapshot?.entries.orEmpty().filter{it.kind=="live"} else currentList
+    private fun zap(delta:Int, keepControlsHidden:Boolean=false){
+        val list=(if(currentList.isEmpty())snapshot?.entries.orEmpty() else currentList).filter{it.kind=="live" && repository.isVisible(it)}
         if(list.isEmpty())return
         val at=list.indexOfFirst{it.id==playback.entry?.id}
         selected=list[Math.floorMod(at+delta,list.size)]
         selected?.let{playChecked(it);recents.add(identity(it));saveState()}
-        if(full)fullscreen() else browse("live")
+        if(full){
+            fullscreen()
+            if(keepControlsHidden){fullscreenControls?.conceal();selected?.let{Toast.makeText(context,it.name,Toast.LENGTH_SHORT).show()}}
+        } else browse("live")
     }
     fun detail(series:Boolean){
         val detailToken=++detailGeneration
@@ -557,7 +562,48 @@ class ProviderUi(private val screen:UniverseScreen) {
             if(delta<0)playback.player?.seekTo(0) else playback.player?.let{if(it.duration>0)it.seekTo(it.duration)}
         }
     }
+    private val hiddenRemoteKeys=mutableSetOf<Int>()
+    private var fullscreenClick:View?=null
+    /** Activity-level routing works even when no descendant currently owns focus. */
+    fun fullscreenKey(event:KeyEvent):Boolean {
+        if(!full)return false
+        val key=event.keyCode
+        val ok=key==KeyEvent.KEYCODE_DPAD_CENTER || key==KeyEvent.KEYCODE_ENTER || key==KeyEvent.KEYCODE_NUMPAD_ENTER
+        if(event.action==KeyEvent.ACTION_UP){
+            if(hiddenRemoteKeys.remove(key))return true
+            if(ok && fullscreenClick!=null){
+                val click=fullscreenClick;fullscreenClick=null
+                if(!event.isCanceled && click?.hasFocus()==true)click.performClick()
+                return true
+            }
+            return false
+        }
+        if(event.action!=KeyEvent.ACTION_DOWN)return false
+        val dpad=key in listOf(KeyEvent.KEYCODE_DPAD_UP,KeyEvent.KEYCODE_DPAD_DOWN,
+            KeyEvent.KEYCODE_DPAD_LEFT,KeyEvent.KEYCODE_DPAD_RIGHT,KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_ENTER,KeyEvent.KEYCODE_NUMPAD_ENTER)
+        if(!dpad)return false
+        if(panelSelected && !panel.tick())return true
+        val controls=fullscreenControls?:return false
+        if(controls.visibility!=View.VISIBLE){
+            hiddenRemoteKeys.add(key)
+            if(controls.live && (key==KeyEvent.KEYCODE_DPAD_UP || key==KeyEvent.KEYCODE_DPAD_DOWN))
+                zap(if(key==KeyEvent.KEYCODE_DPAD_UP)-1 else 1,keepControlsHidden=true)
+            else controls.reveal()
+            hiddenRemoteKeys.add(key)
+            return true
+        }
+        // A wake-up OK must not click Pause on release, including held-key repeats.
+        if(key in hiddenRemoteKeys)return true
+        controls.reveal() // Also repairs visible-but-unfocused controls.
+        if(ok){
+            if(event.repeatCount==0)fullscreenClick=controls.findFocus()
+            return true
+        }
+        return false
+    }
     fun key(event:KeyEvent):Boolean {
+        if(fullscreenKey(event))return true
         if(panelSelected && !panel.tick())return true
         val key=event.keyCode
         val ok=key==KeyEvent.KEYCODE_DPAD_CENTER||key==KeyEvent.KEYCODE_ENTER||key==KeyEvent.KEYCODE_NUMPAD_ENTER
@@ -603,8 +649,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         }
         if(full && event.action==KeyEvent.ACTION_DOWN){
             val dpad=key in listOf(KeyEvent.KEYCODE_DPAD_UP,KeyEvent.KEYCODE_DPAD_DOWN,
-                KeyEvent.KEYCODE_DPAD_LEFT,KeyEvent.KEYCODE_DPAD_RIGHT,KeyEvent.KEYCODE_DPAD_CENTER,KeyEvent.KEYCODE_ENTER)
-            if(dpad && fullscreenControls?.reveal()==true)return true
+                KeyEvent.KEYCODE_DPAD_LEFT,KeyEvent.KEYCODE_DPAD_RIGHT,KeyEvent.KEYCODE_DPAD_CENTER,KeyEvent.KEYCODE_ENTER,KeyEvent.KEYCODE_NUMPAD_ENTER)
             if(dpad)return false
             val handled=playback.key(event)
             if(handled){fullscreenControls?.show();fullscreenControls?.update()}

@@ -48,6 +48,7 @@ class FullscreenControlsTest {
    shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(4100))
    assertEquals(View.INVISIBLE,overlay.visibility)
    assertTrue(a.screen.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_DPAD_RIGHT)))
+   a.screen.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP,KeyEvent.KEYCODE_DPAD_RIGHT))
    assertEquals(View.VISIBLE,overlay.visibility)
    assertTrue(all(overlay).any{it.hasFocus()})
    a.screen.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_DPAD_RIGHT))
@@ -68,6 +69,73 @@ class FullscreenControlsTest {
    assertFalse(all(overlay).first{it.contentDescription=="Rewind 10 seconds"}.isEnabled)
   }
   controller.pause().stop().destroy()
+ }
+
+ @Test fun activityRemoteRecoversAfterHideAndZapsLiveWithoutShowingControls(){
+  val controller=Robolectric.buildActivity(HomeActivity::class.java).create()
+  val a=controller.get();val p=a.screen.provider;p.testMode=true
+  controller.start().resume().visible()
+  val repo=ProviderRepository(CredentialVault(a,{javax.crypto.spec.SecretKeySpec(ByteArray(16){5},"AES")},"remote-fixture")){url->
+   when {
+    url.contains("categories")->"""[{"category_id":"7","category_name":"News"}]"""
+    url.contains("action=")-> if(url.contains("get_live_streams"))
+     """[{"stream_id":1,"category_id":"7","name":"One"},{"stream_id":2,"category_id":"7","name":"Two"},{"stream_id":3,"category_id":"7","name":"Three"}]""" else "[]"
+    else->"""{"user_info":{"auth":1,"status":"Active"}}"""
+   }
+  }
+  val snapshot=repo.connect(ProviderLogin("Fixture","https://provider.invalid","u","p"))
+  field(p,"manualRepository",repo);field(p,"snapshot",snapshot)
+  field(p,"currentList",snapshot.entries)
+  val exo=ExoPlayer.Builder(a).build();field(p.playback,"player",exo)
+  field(p.playback,"entry",snapshot.entries[1])
+  fun fullscreen(){
+   ProviderUi::class.java.getDeclaredMethod("fullscreen").apply{isAccessible=true}.invoke(p)
+   layout(a.screen);shadowOf(Looper.getMainLooper()).idle()
+  }
+  fun overlay()=all(a.screen).filterIsInstance<FullscreenControls>().single()
+  fun press(key:Int){
+   assertTrue(a.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN,key)))
+   assertTrue(a.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP,key)))
+  }
+  fullscreen()
+  for(key in listOf(KeyEvent.KEYCODE_DPAD_CENTER,KeyEvent.KEYCODE_ENTER,KeyEvent.KEYCODE_NUMPAD_ENTER,KeyEvent.KEYCODE_DPAD_LEFT,KeyEvent.KEYCODE_DPAD_RIGHT)){
+   shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(4100))
+   assertEquals(View.INVISIBLE,overlay().visibility)
+   // Reproduce device losing every child focus, not only the normal focus-sink path.
+   a.screen.clearFocus()
+   exo.playWhenReady=true
+   press(key)
+   assertEquals(View.VISIBLE,overlay().visibility)
+   assertEquals("Play or pause",overlay().findFocus()?.contentDescription)
+   assertTrue("Wake-up must not pause playback",exo.playWhenReady)
+   assertEquals("2",p.playback.entry?.id)
+  }
+  shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(4100))
+  press(KeyEvent.KEYCODE_DPAD_DOWN)
+  assertEquals("3",p.playback.entry?.id)
+  assertEquals(View.INVISIBLE,overlay().visibility)
+  assertEquals("Three",org.robolectric.shadows.ShadowToast.getTextOfLatestToast())
+  press(KeyEvent.KEYCODE_DPAD_DOWN)
+  assertEquals("1",p.playback.entry?.id) // wrap
+  press(KeyEvent.KEYCODE_DPAD_UP)
+  assertEquals("3",p.playback.entry?.id)
+  assertEquals(View.INVISIBLE,overlay().visibility)
+  press(KeyEvent.KEYCODE_DPAD_CENTER)
+  assertEquals(View.VISIBLE,overlay().visibility)
+  // Visible OK still performs the real control click.
+  exo.playWhenReady=true
+  a.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_DPAD_CENTER))
+  a.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP,KeyEvent.KEYCODE_DPAD_CENTER))
+  assertFalse(exo.playWhenReady)
+  // VOD arrows reveal controls, never zap.
+  field(p.playback,"entry",MediaEntry("movie","Movie","7","movie"))
+  fullscreen()
+  shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(4100))
+  press(KeyEvent.KEYCODE_DPAD_UP)
+  assertEquals("movie",p.playback.entry?.id)
+  assertEquals(View.VISIBLE,overlay().visibility)
+  assertTrue(p.back())
+  controller.pause().stop().destroy();repo.clear()
  }
  @Test fun timesAreSafe(){
   assertEquals("00:00",FullscreenControls.clock(-1))

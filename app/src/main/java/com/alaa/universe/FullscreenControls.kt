@@ -18,7 +18,7 @@ class FullscreenControls(
 ):FrameLayout(context) {
     val stage=Stage(context).apply{transparent=true}
     private val main=Handler(Looper.getMainLooper())
-    private val hide=Runnable{visibility=View.INVISIBLE;clearFocus()}
+    private val hide=Runnable{conceal()}
     private val tick=object:Runnable{override fun run(){update();main.postDelayed(this,500)}}
     private val buttons=mutableListOf<View>()
     private var attached=false
@@ -103,9 +103,18 @@ class FullscreenControls(
         };stage.put(b,x,y,size,size);buttons.add(b);return b
     }
     fun show(){visibility=View.VISIBLE;main.removeCallbacks(hide);if(attached)main.postDelayed(hide,4000)}
+    fun conceal(){
+        main.removeCallbacks(hide)
+        visibility=View.INVISIBLE
+        clearFocus()
+        // Keep a real focus target when the overlay disappears, not PlayerView.
+        (parent as? View)?.apply{isFocusable=true;isFocusableInTouchMode=true;requestFocus()}
+    }
     fun reveal():Boolean {
-        if(visibility==View.VISIBLE){show();return false}
-        show();pause.requestFocus();return true
+        val hidden=visibility!=View.VISIBLE
+        show()
+        if(hidden || findFocus()==null)pause.requestFocus()
+        return hidden
     }
     fun initialFocus(){show();pause.requestFocus()}
     fun update(){
