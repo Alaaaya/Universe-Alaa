@@ -98,7 +98,7 @@ class FullscreenControlsTest {
    assertTrue(a.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP,key)))
   }
   fullscreen()
-  for(key in listOf(KeyEvent.KEYCODE_DPAD_CENTER,KeyEvent.KEYCODE_ENTER,KeyEvent.KEYCODE_NUMPAD_ENTER,KeyEvent.KEYCODE_DPAD_LEFT,KeyEvent.KEYCODE_DPAD_RIGHT)){
+  for(key in listOf(KeyEvent.KEYCODE_DPAD_LEFT,KeyEvent.KEYCODE_DPAD_RIGHT)){
    shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(4100))
    assertEquals(View.INVISIBLE,overlay().visibility)
    // Reproduce device losing every child focus, not only the normal focus-sink path.
@@ -120,7 +120,22 @@ class FullscreenControlsTest {
   press(KeyEvent.KEYCODE_DPAD_UP)
   assertEquals("3",p.playback.entry?.id)
   assertEquals(View.INVISIBLE,overlay().visibility)
-  press(KeyEvent.KEYCODE_DPAD_CENTER)
+  for(ok in listOf(KeyEvent.KEYCODE_DPAD_CENTER,KeyEvent.KEYCODE_ENTER,KeyEvent.KEYCODE_NUMPAD_ENTER)){
+   press(ok)
+   val list=all(a.screen).filterIsInstance<ChannelOverlay>().single()
+   assertEquals(View.INVISIBLE,overlay().visibility)
+   assertEquals("Channel Three",list.findFocus()?.contentDescription)
+   press(KeyEvent.KEYCODE_DPAD_UP)
+   assertEquals("Channel Two",list.findFocus()?.contentDescription)
+   press(KeyEvent.KEYCODE_DPAD_CENTER)
+   assertEquals("2",p.playback.entry?.id)
+   assertTrue(all(a.screen).none{it is ChannelOverlay})
+   press(ok)
+   press(KeyEvent.KEYCODE_BACK)
+   assertTrue(all(a.screen).none{it is ChannelOverlay})
+   field(p.playback,"entry",snapshot.entries[2]);fullscreen();overlay().conceal()
+  }
+  press(KeyEvent.KEYCODE_DPAD_RIGHT)
   assertEquals(View.VISIBLE,overlay().visibility)
   // Visible OK still performs the real control click.
   exo.playWhenReady=true

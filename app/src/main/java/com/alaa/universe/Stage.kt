@@ -18,6 +18,9 @@ class Stage(context: Context): ViewGroup(context) {
     fun put(v: View,x:Int,y:Int,w:Int,h:Int,font:Float?=null): View {
         slots[v]=Slot(x,y,w,h,font); addView(v); return v
     }
+    fun place(v:View,x:Int,y:Int,w:Int,h:Int,font:Float?=null) {
+        slots[v]=Slot(x,y,w,h,font);requestLayout()
+    }
     override fun onMeasure(w:Int,h:Int) {
         val width=MeasureSpec.getSize(w); val height=MeasureSpec.getSize(h)
         val s=minOf(width/1920f,height/1080f)
@@ -29,13 +32,22 @@ class Stage(context: Context): ViewGroup(context) {
     }
     override fun onLayout(changed:Boolean,l:Int,t:Int,r:Int,b:Int) {
         val s=minOf(width/1920f,height/1080f); val ox=(width-1920*s)/2; val oy=(height-1080*s)/2
-        slots.forEach { (v,p) ->
+        slots.filterKeys{it.parent===this}.forEach { (v,p) ->
             val x=(ox+p.x*s).toInt();val y=(oy+p.y*s).toInt()
             v.layout(x,y,x+v.measuredWidth,y+v.measuredHeight)
         }
+        findViewWithTag<View>("universe-back")?.takeIf{it.parent===this}?.let{back->
+            back.bringToFront()
+            val rows=slots.keys.filter{it!==back&&it.isFocusable&&it.visibility==View.VISIBLE}
+            val top=rows.minOfOrNull{it.top}
+            rows.filter{it.top==top}.forEach{it.nextFocusUpId=back.id}
+            if(back.nextFocusDownId==View.NO_ID)back.nextFocusDownId=rows.firstOrNull{it.top==top}?.id?:back.id
+        }
     }
+    override fun onViewRemoved(child:View){super.onViewRemoved(child);slots.remove(child)}
     override fun onDraw(c:Canvas) {
         if(transparent)return
+        if(theme=="harak"){c.drawColor(Harak.INK);return}
         if(theme=="red"){c.drawColor(Color.BLACK);return}
         val p=Paint(Paint.ANTI_ALIAS_FLAG)
         val base=when(theme){"gold"->0xff100f0a.toInt();"royal"->0xff061d55.toInt();else->0xff020b18.toInt()}
@@ -65,6 +77,7 @@ fun surface(color:Int,stroke:Int?=null): GradientDrawable = GradientDrawable().a
 
 /** Original orbit/play monogram. No Universe/IBO artwork. */
 class AlaaMark(context:Context,var tint:Int=0xffb8d9ff.toInt()): View(context) {
+
     override fun onDraw(c:Canvas) {
         val s=minOf(width,height).toFloat();c.save();c.translate((width-s)/2,(height-s)/2);c.scale(s/160,s/160)
         val p=Paint(Paint.ANTI_ALIAS_FLAG).apply {color=tint;style=Paint.Style.STROKE;strokeWidth=3f}

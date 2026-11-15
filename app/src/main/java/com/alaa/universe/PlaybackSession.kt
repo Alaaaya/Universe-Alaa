@@ -93,10 +93,10 @@ class PlaybackSession(private val context:Context, private val repositoryProvide
         p.currentTracks.groups.filter{it.type==type}.forEach{g->repeat(g.length){if(g.isTrackSupported(it))options.add(g to it)}}
         val labels=mutableListOf(if(type==C.TRACK_TYPE_TEXT)"Off" else "Auto")
         options.forEachIndexed { n,(g,i)->
-            val f=g.getTrackFormat(i);labels.add(listOfNotNull(f.label,f.language?.takeIf{it!="und"}).distinct().joinToString(" · ").ifBlank{"Track ${n+1}"})
+            val f=g.getTrackFormat(i);labels.add(listOfNotNull(f.label,f.language?.takeIf{it!="und"},if(type==C.TRACK_TYPE_VIDEO&&f.height>0)"${f.height}p" else null).distinct().joinToString(" · ").ifBlank{"Track ${n+1}"})
         }
         if(options.isEmpty())labels.add("No supported embedded tracks")
-        AlertDialog.Builder(context).setTitle(if(type==C.TRACK_TYPE_TEXT)"Subtitles" else "Audio")
+        AlertDialog.Builder(context).setTitle(if(type==C.TRACK_TYPE_TEXT)"Subtitles" else if(type==C.TRACK_TYPE_VIDEO)"Quality" else "Audio")
             .setItems(labels.toTypedArray()){_,i->
                 if(i==0)p.trackSelectionParameters=p.trackSelectionParameters.buildUpon().clearOverridesOfType(type).setTrackTypeDisabled(type,type==C.TRACK_TYPE_TEXT).build()
                 else options.getOrNull(i-1)?.let{(g,n)->p.trackSelectionParameters=p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(type,false).setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup,n)).build()}

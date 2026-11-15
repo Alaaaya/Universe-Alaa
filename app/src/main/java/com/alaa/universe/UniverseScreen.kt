@@ -31,12 +31,13 @@ class UniverseScreen(context:Context): FrameLayout(context) {
     private val groups=mutableListOf("All Channels","Favorites","Recently Viewed","AR | Alaa","AR | Cinema","AR | Sports","AR | Kids","DE | Germany","World","Documentaries")
     private val names=listOf("ALAA - ONE","ALAA - CINEMA","ALAA - WORLD","ALAA - TWO","ALAA - KIDS","ALAA - FIVE","ALAA - MAX","ALAA - CULTURE","ALAA - DRAMA","ALAA - ACTION","ALAA - MUSIC","ALAA - TRAVEL","ALAA - NATURE","ALAA - CLASSIC","ALAA - NEWS","ALAA - FAMILY")
     private lateinit var stage:Stage
-    private val accent get()=when(theme){"red"->0xffe50914.toInt();"gold"->0xffd8b602.toInt();else->0xff518df4.toInt()}
+    private val accent get()=when(theme){"harak"->Harak.GOLD;"red"->0xffe50914.toInt();"gold"->0xffd8b602.toInt();else->0xff518df4.toInt()}
     private val textColor get()=if(theme=="red")Color.WHITE else 0xffe2eaf6.toInt()
     init {layoutDirection=View.LAYOUT_DIRECTION_LTR}
     private fun reset(wave:Boolean=false) {
         removeAllViews();stage=Stage(context).apply{theme=this@UniverseScreen.theme;waves=wave}
         addView(stage,LayoutParams(-1,-1))
+        if(page!="home")BackButton.add(stage,accent){back()}
     }
     private fun text(value:String,x:Int,y:Int,w:Int,h:Int,size:Float=28f,color:Int=textColor,center:Boolean=false):TextView {
         val v=TextView(context).apply{
@@ -66,6 +67,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
     fun home() {
         page="home";drawer=false;fullscreen=false;reset()
         if(homeTheme=="prayer"){prayerHome();return}
+        if(theme=="harak"){Harak.home(this,stage);return}
         text(provider.snapshot?.name?:"Not connected",54,43,250,38,25f,0xff9aaec8.toInt())
         text(clock(),338,43,180,38,25f,0xff9aaec8.toInt())
         val date=if(fixedClock!=null)"28 October 2026" else SimpleDateFormat("dd MMMM yyyy",Locale.getDefault()).format(Date())
@@ -166,15 +168,16 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         }
         focus(cards[homeIndex])
     }
+    fun openThemes()=themeDialog()
     private fun themeDialog() {
         page="themes";reset()
         text(if(arabic)"المظهر" else "Theme",100,80,1300,100,56f)
-        val labels=listOf("Red","Gold","Blue","Royal Blue","Sunset Prayer")
-        val rows=labels.mapIndexed{i,label->button(label,100,250+i*125,900,100,40f){
-            if(i==4)homeTheme="prayer" else {homeTheme="classic";theme=listOf("red","gold","blue","royal")[i]}
+        val labels=listOf("Red","Gold","Blue","Royal Blue","Sunset Prayer","هارك · Noir et Or")
+        val rows=labels.mapIndexed{i,label->button(label,100,230+i*115,1100,100,40f){
+            if(i==4)homeTheme="prayer" else {homeTheme="classic";theme=if(i==5)"harak" else listOf("red","gold","blue","royal")[i]}
             context.getSharedPreferences("appearance",0).edit().putString("home",homeTheme).putString("theme",theme).apply();home()
         }}
-        chain(rows);focus(rows[listOf("red","gold","blue","royal").indexOf(theme).coerceAtLeast(0)])
+        chain(rows);focus(rows[if(homeTheme=="prayer")4 else if(theme=="harak")5 else listOf("red","gold","blue","royal").indexOf(theme).coerceAtLeast(0)])
 
     }
     private fun daysLeft()=provider.snapshot?.let{it.expires?.let{_->it.daysLeft(System.currentTimeMillis()).toString()}?:"Unlimited / unknown"}?:"—"

@@ -23,6 +23,8 @@ class FullscreenControls(
     private val buttons=mutableListOf<View>()
     private var attached=false
     val live=item.kind=="live"
+    private val harak=accent==Harak.GOLD
+    var openChannels:(()->Unit)?=null
     private lateinit var pause:Control
     private lateinit var heart:Control
     private lateinit var elapsed:TextView
@@ -35,7 +37,7 @@ class FullscreenControls(
         layoutDirection=View.LAYOUT_DIRECTION_LTR
         addView(stage,LayoutParams(-1,-1))
         stage.put(View(context).apply{background=GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,intArrayOf(0xaa000000.toInt(),0x00000000,0x00000000,0xee000000.toInt()))},0,0,1920,1080)
-        val back=control("Back","back",42,43,74){leave()}
+        val back=control("Back","back",24,24,74){leave()}
         stage.put(View(context).apply{background=rounded(0xad121820.toInt(),22f)},130,28,1120,108)
         stage.put(TextView(context).apply{text=item.name.trim().split(Regex("\\s+")).take(2).joinToString(""){it.take(1)}.uppercase();gravity=Gravity.CENTER;setTextColor(Color.WHITE);background=rounded(0x66323b45,14f)},146,42,78,78,28f)
         val image=ImageView(context).apply{scaleType=ImageView.ScaleType.FIT_CENTER;clipToOutline=true;background=rounded(Color.TRANSPARENT,12f)}
@@ -78,6 +80,7 @@ class FullscreenControls(
             if(i==7){heart=b;b.selectedIcon=isFavorite}
             if(live && (i==1||i==3)){b.isEnabled=false;b.isFocusable=false;b.alpha=.28f}
         }
+        back.tag="universe-back"
         val row=buttons.drop(1).filter{it.isFocusable}
         row.forEachIndexed{i,v->
             v.nextFocusLeftId=row.getOrNull(i-1)?.id?:v.id
@@ -88,11 +91,60 @@ class FullscreenControls(
         progress.id=View.generateViewId();row.forEach{it.nextFocusUpId=if(live)back.id else progress.id}
         progress.nextFocusDownId=pause.id;progress.nextFocusUpId=back.id;back.nextFocusDownId=if(live)pause.id else progress.id
         progress.nextFocusLeftId=progress.id;progress.nextFocusRightId=progress.id
+        if(harak)applyHarak(subtitle)
         update()
+    }
+
+    private fun applyHarak(subtitle:String) {
+        val original=(0 until stage.childCount).map{stage.getChildAt(it)}
+        original.filterIsInstance<TextView>().forEach{it.typeface=Harak.font(context);it.setTextColor(Harak.FG)}
+        if(live) {
+            original.forEach{it.visibility=View.GONE;it.isFocusable=false}
+            // Keep no playback buttons on live. Hidden UP/DOWN zapping remains in ProviderUi.
+            stage.put(View(context).apply{background=Harak.box(0xef0e0d11.toInt(),34f)},50,786,1820,250)
+            Harak.label(stage,item.name.take(2),94,820,150,150,40f,true,Harak.INK).apply{gravity=Gravity.CENTER;background=rounded(Color.WHITE,30f)}
+            val art=original.filterIsInstance<ImageView>().firstOrNull()
+            if(art!=null){art.visibility=View.VISIBLE;stage.place(art,94,820,150,150);art.bringToFront()}
+            Harak.label(stage,item.name,280,826,810,70,40f,true)
+            Harak.label(stage,subtitle,280,901,810,44,25f,false,Harak.MUTED)
+            Harak.label(stage,java.text.SimpleDateFormat("HH:mm",java.util.Locale.getDefault()).format(java.util.Date()),1160,829,230,50,38f,true,Harak.GOLD)
+            Harak.label(stage,"مباشر",1160,891,130,38,22f).apply{gravity=Gravity.CENTER;background=rounded(0xffb51e2e.toInt(),14f)}
+            val channels=pause
+            channels.icon="channels";channels.primary=false;channels.contentDescription="Channels"
+            channels.setOnClickListener{openChannels?.invoke()}
+            heart.contentDescription="Favorite"
+            val quality=buttons.filterIsInstance<Control>().first{it.icon=="audio"}
+            quality.icon="quality";quality.contentDescription="Quality";quality.setOnClickListener{session.tracks(C.TRACK_TYPE_VIDEO)}
+            val row=listOf(channels,heart,quality)
+            row.forEachIndexed{i,v->
+                v.visibility=View.VISIBLE;v.isFocusable=true;v.isFocusableInTouchMode=true;v.isEnabled=true;v.alpha=1f
+                stage.place(v,1460+i*122,850,84,84);v.bringToFront()
+                v.nextFocusLeftId=row.getOrNull(i-1)?.id?:v.id;v.nextFocusRightId=row.getOrNull(i+1)?.id?:v.id
+                v.nextFocusUpId=buttons.first().id;v.nextFocusDownId=v.id
+                Harak.label(stage,listOf("القنوات","المفضلة","الجودة")[i],1436+i*122,947,132,38,19f,false,Harak.MUTED).gravity=Gravity.CENTER
+            }
+            buttons.first().apply{visibility=View.VISIBLE;isFocusable=true;isFocusableInTouchMode=true;bringToFront();nextFocusDownId=channels.id}
+        } else {
+            // Remove the standard theme's header card and duplicate metadata completely.
+            original.filter{it !is Control&&it!==progress&&it!==percent&&it!==total&&it!==remaining&&it.tag!="elapsed-time"}.forEach{it.visibility=View.GONE}
+            Harak.label(stage,item.name,128,48,1540,80,46f,true)
+            stage.place(pause,906,475,108,108)
+            val rewind=buttons.first{it.contentDescription=="Rewind 10 seconds"}
+            val forward=buttons.first{it.contentDescription=="Forward 10 seconds"}
+            stage.place(rewind,686,475,108,108);stage.place(forward,1126,475,108,108)
+            Harak.label(stage,"ترجيع 10 ث",654,600,172,42,22f).gravity=Gravity.CENTER
+            Harak.label(stage,"تشغيل / إيقاف",864,600,192,42,22f).gravity=Gravity.CENTER
+            Harak.label(stage,"تقديم 10 ث",1094,600,172,42,22f).gravity=Gravity.CENTER
+            stage.place(progress,100,810,1720,35)
+            stage.findViewWithTag<TextView>("elapsed-time")?.let{stage.place(it,100,750,250,42,28f)}
+            stage.place(percent,100,861,400,40,22f);stage.place(total,1420,861,400,40,22f)
+            stage.place(remaining,1620,915,200,40,24f)
+            stage.place(heart,1740,970,74,74)
+        }
     }
     private fun rounded(color:Int,r:Float)=GradientDrawable().apply{setColor(color);cornerRadius=r}
     private fun label(s:String,x:Int,y:Int,w:Int,h:Int,size:Float)=TextView(context).apply{
-        text=s;setTextColor(Color.WHITE);gravity=Gravity.CENTER_VERTICAL;includeFontPadding=false;maxLines=1
+        text=s;setTextColor(if(harak)Harak.FG else Color.WHITE);if(harak)typeface=Harak.font(context);gravity=Gravity.CENTER_VERTICAL;includeFontPadding=false;maxLines=1
         ellipsize=android.text.TextUtils.TruncateAt.END
         stage.put(this,x,y,w,h,size)
     }
@@ -126,13 +178,13 @@ class FullscreenControls(
         progress.visibility=if(live)View.INVISIBLE else View.VISIBLE
         progress.isEnabled=known && !live
         progress.isFocusable=known && !live
-        buttons.drop(1).forEach{it.nextFocusUpId=if(known && !live)progress.id else buttons.first().id}
-        buttons.first().nextFocusDownId=if(known && !live)progress.id else pause.id
+        if(!(harak&&live))buttons.drop(1).forEach{it.nextFocusUpId=if(known && !live)progress.id else buttons.first().id}
+        if(!(harak&&live))buttons.first().nextFocusDownId=if(known && !live)progress.id else pause.id
         (stage.findViewWithTag<TextView>("elapsed-time")).text=if(live)"● LIVE" else clock(position)
-        percent.text=if(live)"Live broadcast" else if(known)"${(progress.fraction*100).toInt()}%" else "Duration unavailable"
-        total.text=if(!live&&known)"Total  ${clock(duration)}" else ""
+        percent.text=if(live)"Live broadcast" else if(known)"${(progress.fraction*100).toInt()}%" else if(harak)"المدة غير متاحة" else "Duration unavailable"
+        total.text=if(!live&&known)(if(harak)"المدة  " else "Total  ")+clock(duration) else ""
         remaining.text=if(live)"Real time" else if(known)"−${clock((duration-position).coerceAtLeast(0))}" else "—"
-        pause.icon=if(p?.playWhenReady==false)"play" else "pause";pause.invalidate()
+        if(!(harak&&live))pause.icon=if(p?.playWhenReady==false)"play" else "pause";pause.invalidate()
     }
     override fun onAttachedToWindow(){super.onAttachedToWindow();attached=true;main.post(tick);show()}
     override fun onDetachedFromWindow(){attached=false;main.removeCallbacksAndMessages(null);super.onDetachedFromWindow()}
@@ -150,12 +202,18 @@ class FullscreenControls(
         var selectedIcon=false;set(v){field=v;invalidate()}
         override fun onDraw(c:Canvas){
             val s=minOf(width,height).toFloat();c.save();c.translate((width-s)/2,(height-s)/2);c.scale(s/80,s/80)
-            val p=Paint(3).apply{color=if(primary)accent else 0xb5222932.toInt()};c.drawCircle(40f,40f,36f,p)
-            if(hasFocus()){p.color=Color.WHITE;p.style=Paint.Style.STROKE;p.strokeWidth=3f;c.drawCircle(40f,40f,39f,p)}
-            p.color=if(selectedIcon)accent else Color.WHITE;p.style=Paint.Style.STROKE;p.strokeWidth=2.8f;p.strokeJoin=Paint.Join.ROUND;p.strokeCap=Paint.Cap.ROUND
+            val themed=accent==Harak.GOLD
+            val goldFill=themed&&(primary||hasFocus())
+            val p=Paint(3).apply{color=if(primary)accent else if(themed)0xff201d26.toInt() else 0xb5222932.toInt()}
+            if(goldFill)p.shader=LinearGradient(8f,8f,72f,72f,intArrayOf(0xfffdeeb5.toInt(),0xffb98b2d.toInt()),null,Shader.TileMode.CLAMP)
+            c.drawCircle(40f,40f,36f,p);p.shader=null
+            if(hasFocus()){p.color=if(themed)Harak.GOLD else Color.WHITE;p.style=Paint.Style.STROKE;p.strokeWidth=3f;c.drawCircle(40f,40f,39f,p)}
+            p.color=if(goldFill)Harak.INK else if(selectedIcon||themed)accent else Color.WHITE;p.style=Paint.Style.STROKE;p.strokeWidth=2.8f;p.strokeJoin=Paint.Join.ROUND;p.strokeCap=Paint.Cap.ROUND
             fun line(x:Float,y:Float,a:Float,b:Float)=c.drawLine(x,y,a,b,p)
             fun triangle(x:Float,reverse:Boolean=false){val d=if(reverse)-1 else 1;val path=Path().apply{moveTo(x-6*d,29f);lineTo(x+9*d,40f);lineTo(x-6*d,51f);close()};p.style=Paint.Style.FILL;c.drawPath(path,p);p.style=Paint.Style.STROKE}
             when(icon){
+                "channels"->{c.drawRoundRect(22f,24f,58f,56f,4f,4f,p);line(27f,34f,53f,34f);line(27f,44f,53f,44f)}
+                "quality"->{c.drawCircle(40f,40f,13f,p);for(i in 0..7){c.save();c.rotate(i*45f,40f,40f);line(40f,19f,40f,25f);c.restore()}}
                 "pause"->{p.style=Paint.Style.FILL;c.drawRoundRect(30f,27f,36f,53f,1f,1f,p);c.drawRoundRect(44f,27f,50f,53f,1f,1f,p)}
                 "play"->triangle(40f)
                 "prev"->{line(27f,28f,27f,52f);triangle(43f,true)}

@@ -311,8 +311,10 @@ class ProviderUi(private val screen:UniverseScreen) {
             }.show()
     }
     fun requireConnection():Boolean {if(snapshot!=null)return true;loginDialog();return false}
-    private val accent get()=when(screen.theme){"red"->0xffe50914.toInt();"gold"->0xffd8b602.toInt();else->0xff518df4.toInt()}
+    private val harak get()=screen.theme=="harak"
+    private val accent get()=when(screen.theme){"harak"->Harak.GOLD;"red"->0xffe50914.toInt();"gold"->0xffd8b602.toInt();else->0xff518df4.toInt()}
     private fun reset(){
+        channelOverlay=null
         fullscreenControls=null
         hiddenRemoteKeys.clear()
         fullscreenClick=null
@@ -324,6 +326,7 @@ class ProviderUi(private val screen:UniverseScreen) {
     }
     private fun text(s:String,x:Int,y:Int,w:Int,h:Int,size:Float=28f):TextView{
         val v=TextView(context).apply{text=s;setTextColor(Color.WHITE);gravity=Gravity.CENTER_VERTICAL;maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END;includeFontPadding=false;layoutDirection=View.LAYOUT_DIRECTION_LTR}
+        if(harak){v.typeface=Harak.font(context);v.setTextColor(Harak.FG);v.gravity=Gravity.LEFT or Gravity.CENTER_VERTICAL}
         stage!!.put(v,x,y,w,h,size);return v
     }
     private fun artwork(e:MediaEntry,x:Int,y:Int,w:Int,h:Int){
@@ -336,13 +339,42 @@ class ProviderUi(private val screen:UniverseScreen) {
     private fun button(s:String,x:Int,y:Int,w:Int,h:Int,action:()->Unit):TextView=
         text(s,x,y,w,h).apply{
             id=View.generateViewId();isFocusable=true;isFocusableInTouchMode=true;isClickable=true
-            background=surface(0x44182438);setOnFocusChangeListener{_,f->background=surface(if(f)accent else 0x44182438)}
+            background=if(harak)Harak.box() else surface(0x44182438);if(harak)setPadding(18,0,18,0)
+            setOnFocusChangeListener{_,f->background=if(harak)Harak.box(focus=f) else surface(if(f)accent else 0x44182438)}
             setOnClickListener{action()};contentDescription=s
         }
     private fun focus(v:View?){v?.requestFocus()}
     private fun header(title:String){
-        text("universe-Alaa",48,30,620,75,42f).setTextColor(accent)
+        BackButton.add(stage!!,accent){screen.back()}
+        if(harak){Harak.chrome(stage!!,screen,title,when(mode){"live"->1;"movie"->2;else->3});return}
+        text("universe-Alaa",120,30,550,75,42f).setTextColor(accent)
         text(title,800,30,1072,75,43f)
+    }
+    fun homeEntries()=snapshot?.entries.orEmpty().filter{testMode||repository.isVisible(it)}
+    fun openSaved(saved:String) {
+        if(!requireConnection())return
+        mode="live";category=saved;offset=0;catOffset=0;screen.live()
+    }
+    fun openHomeEntry(e:MediaEntry) {
+        if(!testMode&&!repository.isVisible(e))return
+        selected=e
+        recents.add(identity(e));saveState()
+        if(e.kind=="series"){season=0;seasonOffset=0;episodeOffset=0;episodeList=emptyList();screen.seriesDetail()}
+        else screen.movieDetail()
+    }
+    fun homeArtwork(e:MediaEntry,image:ImageView) {
+        if(!testMode&&!repository.isVisible(e))return
+        val uri=runCatching{ProviderRepository.validatedUrl(e.icon,imageHttpAllowed)}.getOrNull()?:return
+        image.addOnAttachStateChangeListener(object:View.OnAttachStateChangeListener{
+            override fun onViewAttachedToWindow(v:View){}
+            override fun onViewDetachedFromWindow(v:View){
+                com.bumptech.glide.Glide.with(context).clear(image)
+                image.removeOnAttachStateChangeListener(this)
+            }
+        })
+        com.bumptech.glide.Glide.with(context).asBitmap().load(uri.toASCIIString())
+            .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.NONE).skipMemoryCache(true)
+            .override(400,500).timeout(15000).into(image)
     }
     private fun kindCategories()=snapshot?.categories.orEmpty().filter{it.kind==mode}
     private fun entries():List<MediaEntry> {
@@ -373,17 +405,18 @@ class ProviderUi(private val screen:UniverseScreen) {
         mode=kind
         categoryOnlyView=categoryOnly
         if(kind!="live")playback.stop()
-        reset();header(if(kind=="live")"Live TV" else if(kind=="movie")"Movies" else "Series")
+        reset();header(if(harak)when(kind){"live"->"البث المباشر";"movie"->"الأفلام";else->"المسلسلات"}else if(kind=="live")"Live TV" else if(kind=="movie")"Movies" else "Series")
         val cats=allCategories()
-        catOffset=catOffset.coerceIn(0,maxOf(0,cats.size-10))
-        val catRows=cats.drop(catOffset).take(10).mapIndexed{i,c->
-            button(c.name,30,160+i*76,if(categoryOnly)900 else 430,70){
+        val categoryPage=if(harak)8 else 10
+        catOffset=catOffset.coerceIn(0,maxOf(0,cats.size-categoryPage))
+        val catRows=cats.drop(catOffset).take(categoryPage).mapIndexed{i,c->
+            button(if(harak)when(c.id){""->"الكل";"favorites"->"المفضلة";"recent"->"المشاهدة الأخيرة";else->c.name}else c.name,if(harak)348 else 30,if(harak)160+i*98 else 160+i*76,if(harak)360 else if(categoryOnly)900 else 430,if(harak)86 else 70){
                 category=c.id;offset=0
                 if(categoryOnly)screen.live() else browse(mode)
                 loadOpenedCategory(c)
             }.also{v->bindMove(v,true,c.id);v.setOnKeyListener{_,key,event->
                 if(event.action!=KeyEvent.ACTION_DOWN)false
-                else if(key==20&&i==9&&catOffset+10<cats.size){catOffset++;nextCatFocus=9;browse(mode,categoryOnly);true}
+                else if(key==20&&i==categoryPage-1&&catOffset+categoryPage<cats.size){catOffset++;nextCatFocus=categoryPage-1;browse(mode,categoryOnly);true}
                 else if(key==19&&i==0&&catOffset>0){catOffset--;nextCatFocus=0;browse(mode,categoryOnly);true}
                 else false
             }}
@@ -395,12 +428,12 @@ class ProviderUi(private val screen:UniverseScreen) {
             focus(catRows.getOrNull(nextCatFocus?:0));nextCatFocus=null;return
         }
         currentList=entries();offset=offset.coerceIn(0,maxOf(0,currentList.size-1))
-        val live=kind=="live";val count=if(live)12 else 10
+        val live=kind=="live";val count=if(live){if(harak)8 else 12} else 10
         val items=currentList.drop(offset).take(count)
         val cards=items.mapIndexed{i,e->
-            val x=if(live)490 else 500+(i%5)*274
-            val y=if(live)160+i*66 else 160+(i/5)*390
-            val w=if(live)470 else 253;val h=if(live)60 else 370
+            val x=if(harak){if(live)738 else 738+(i%5)*231}else if(live)490 else 500+(i%5)*274
+            val y=if(harak){if(live)160+i*100 else 160+(i/5)*344}else if(live)160+i*66 else 160+(i/5)*390
+            val w=if(harak){if(live)520 else 205}else if(live)470 else 253;val h=if(harak){if(live)88 else 310}else if(live)60 else 370
             button(if(live)e.name else "",x,y,w,h){
                 selected=e;recents.add(identity(e));saveState()
                 when(e.kind){
@@ -411,9 +444,9 @@ class ProviderUi(private val screen:UniverseScreen) {
             }.also{v->
                 if(live)bindMove(v,false,e.id)
                 if(!live){
-                    text(e.name.take(1),x+14,y+28,w-28,265,60f).apply{gravity=Gravity.CENTER;setTextColor(accent)}
-                    artwork(e,x+5,y+5,w-10,295)
-                    text(e.name,x+12,y+310,w-24,52,24f).apply{maxLines=2;gravity=Gravity.CENTER}
+                    text(e.name.take(1),x+14,y+28,w-28,if(harak)220 else 265,60f).apply{gravity=Gravity.CENTER;setTextColor(accent)}
+                    artwork(e,x+5,y+5,w-10,if(harak)240 else 295)
+                    text(e.name,x+12,y+if(harak)246 else 310,w-24,52,if(harak)18f else 24f).apply{maxLines=2;gravity=Gravity.CENTER}
                 }
                 v.setOnKeyListener{_,key,event->
                     if(event.action!=KeyEvent.ACTION_DOWN)false
@@ -433,19 +466,19 @@ class ProviderUi(private val screen:UniverseScreen) {
         if(items.isEmpty())text("No items in this category",520,380,1000,100,37f)
         if(live){
             val target=PlayerView(context).apply{useController=false;isFocusable=false}
-            stage!!.put(target,990,160,882,496);playback.attach(target)
+            stage!!.put(target,if(harak)1288 else 990,160,if(harak)588 else 882,if(harak)331 else 496);playback.attach(target)
             val title=selected?.takeIf{it.kind=="live"}?.name?:"Select a channel"
-            text(title,990,680,882,90,35f)
-            val open=button("Fullscreen",990,800,360,72){if(playback.entry!=null)fullscreen()}
-            val tracks=button("Audio / Subtitles",1375,800,480,72){playback.trackMenu()}
-            val fav=button("Favorite",990,890,360,64){selected?.let{if(!favorites.add(identity(it)))favorites.remove(identity(it));saveState();toast("Favorites updated")}}
+            text(title,if(harak)1288 else 990,if(harak)515 else 680,if(harak)588 else 882,90,35f)
+            val open=button("Fullscreen",if(harak)1288 else 990,if(harak)620 else 800,if(harak)260 else 360,72){if(playback.entry!=null)fullscreen()}
+            val tracks=button("Audio / Subtitles",if(harak)1566 else 1375,if(harak)620 else 800,if(harak)310 else 480,72){playback.trackMenu()}
+            val fav=button("Favorite",if(harak)1288 else 990,if(harak)718 else 890,if(harak)588 else 360,64){selected?.let{if(!favorites.add(identity(it)))favorites.remove(identity(it));saveState();toast("Favorites updated")}}
             tracks.nextFocusLeftId=open.id;open.nextFocusRightId=tracks.id
             cards.forEach{it.nextFocusRightId=open.id};open.nextFocusLeftId=cards.firstOrNull()?.id?:open.id
-            statusView=text(if(playback.player==null)"Select a channel to start playback" else "",990,968,870,50,24f)
+            statusView=text(if(playback.player==null)"Select a channel to start playback" else "",if(harak)1288 else 990,if(harak)820 else 968,if(harak)588 else 870,50,24f)
             playback.zap={delta->zap(delta)}
             open.nextFocusDownId=fav.id
         }
-        text(if(moving!=null)"↑ ↓ Move   OK Save   BACK Cancel" else "${if(currentList.isEmpty())0 else offset+1}–${offset+items.size} / ${currentList.size}   Hold OK for options   BACK Home",490,1015,1380,45,24f)
+        text(if(moving!=null)"↑ ↓ Move   OK Save   BACK Cancel" else "${if(currentList.isEmpty())0 else offset+1}–${offset+items.size} / ${currentList.size}   Hold OK for options   BACK Home",if(harak)738 else 490,1015,if(harak)1138 else 1380,45,24f)
         focus(if(nextCatFocus!=null)catRows.getOrNull(nextCatFocus!!) else cards.getOrNull((nextCardFocus?:0).coerceAtMost(cards.lastIndex.coerceAtLeast(0)))?:catRows.firstOrNull());nextCatFocus=null;nextCardFocus=null
     }
     private fun zap(delta:Int, keepControlsHidden:Boolean=false){
@@ -463,12 +496,14 @@ class ProviderUi(private val screen:UniverseScreen) {
         val detailToken=++detailGeneration
         val e=selected?:run{browse(if(series)"series" else "movie");return}
         playback.stop();reset();header(e.name)
-        text(e.name,80,200,540,630,55f).apply{maxLines=7;gravity=Gravity.CENTER;background=surface(0x55233149)}
-        artwork(e,85,205,530,620)
+        text(e.name,if(harak)348 else 80,if(harak)182 else 200,if(harak)246 else 540,if(harak)368 else 630,if(harak)32f else 55f).apply{maxLines=7;gravity=Gravity.CENTER;background=surface(0x55233149)}
+        artwork(e,if(harak)350 else 85,if(harak)184 else 205,if(harak)242 else 530,if(harak)364 else 620)
         if(!series){
-            text(e.plot.ifBlank{"Movie from your connected playlist"},720,220,1100,400,33f).apply{maxLines=8;gravity=Gravity.TOP}
-            val play=button("Play Movie",720,800,480,90){playChecked(e);fullscreen()}
-            val fav=button(if(identity(e) in favorites)"Remove Favorite" else "Add Favorite",1230,800,570,90){if(!favorites.add(identity(e)))favorites.remove(identity(e));saveState();detail(false)}
+            if(harak)Harak.label(stage!!,e.name,650,182,1170,90,48f,true)
+            text(e.plot.ifBlank{"Movie from your connected playlist"},if(harak)650 else 720,if(harak)310 else 220,1100,if(harak)280 else 400,if(harak)26f else 33f).apply{maxLines=8;gravity=Gravity.TOP or Gravity.LEFT}
+            val play=button(if(harak)"شاهد الآن" else "Play Movie",if(harak)650 else 720,if(harak)670 else 800,480,90){playChecked(e);fullscreen()}
+            if(harak)play.background=Harak.gold()
+            val fav=button(if(harak){if(identity(e) in favorites)"إزالة من المفضلة" else "إضافة إلى المفضلة"}else if(identity(e) in favorites)"Remove Favorite" else "Add Favorite",if(harak)1160 else 1230,if(harak)670 else 800,570,90){if(!favorites.add(identity(e)))favorites.remove(identity(e));saveState();detail(false)}
             play.nextFocusRightId=fav.id;fav.nextFocusLeftId=play.id;focus(play)
         } else {
             text("Loading seasons and episodes…",720,220,1100,100,36f)
@@ -490,28 +525,50 @@ class ProviderUi(private val screen:UniverseScreen) {
     private fun renderEpisodes(){
         if(full)return
         reset();header(selected?.name.orEmpty())
+        if(harak){
+            val entry=selected
+            Harak.label(stage!!,entry?.name.orEmpty(),624,172,1200,80,48f,true)
+            Harak.label(stage!!,entry?.plot?.ifBlank{"اختر الموسم والحلقة لبدء المشاهدة"}.orEmpty(),624,270,1200,85,24f,false,Harak.MUTED).maxLines=2
+            entry?.let{artwork(it,348,182,246,368)}
+        }
         val seasons=episodeList.map{it.season}.distinct().sorted()
         if(season !in seasons)season=seasons.firstOrNull()?:0
         if(seasons.isEmpty()){text("No episodes returned by this provider",100,320,1700,100,38f);return}
-        seasonOffset=seasonOffset.coerceIn(0,maxOf(0,seasons.size-10))
-        val rows=seasons.drop(seasonOffset).take(10).mapIndexed{i,n->
-            button("Season $n",80,180+i*76,470,70){season=n;episodeOffset=0;renderEpisodes()}.also{v->
+        val seasonPage=if(harak)5 else 10
+        val episodePage=if(harak)6 else 10
+        seasonOffset=seasonOffset.coerceIn(0,maxOf(0,seasons.size-seasonPage))
+        val rows=seasons.drop(seasonOffset).take(seasonPage).mapIndexed{i,n->
+            button(if(harak)"الموسم $n" else "Season $n",if(harak)348+i*304 else 80,if(harak)568 else 180+i*76,if(harak)286 else 470,70){season=n;episodeOffset=0;renderEpisodes()}.also{v->
                 v.setOnKeyListener{_,key,event->if(event.action!=0)false
-                else if(key==20&&i==9&&seasonOffset+10<seasons.size){seasonOffset++;nextSeasonFocus=9;renderEpisodes();true}
-                else if(key==19&&i==0&&seasonOffset>0){seasonOffset--;nextSeasonFocus=0;renderEpisodes();true}else false}
+                else if(key==(if(harak)22 else 20)&&i==seasonPage-1&&seasonOffset+seasonPage<seasons.size){seasonOffset++;nextSeasonFocus=seasonPage-1;renderEpisodes();true}
+                else if(key==(if(harak)21 else 19)&&i==0&&seasonOffset>0){seasonOffset--;nextSeasonFocus=0;renderEpisodes();true}else false}
             }
         }
         val all=episodeList.filter{it.season==season}
         episodeOffset=episodeOffset.coerceIn(0,maxOf(0,all.size-1))
-        val eps=all.drop(episodeOffset).take(10).mapIndexed{i,e->
-            button(e.name,620,180+i*76,1210,70){recents.add(identity(e));saveState();playChecked(e);fullscreen()}.also{v->
+        val eps=all.drop(episodeOffset).take(episodePage).mapIndexed{i,e->
+            button(e.name,if(harak)348+(i%2)*778 else 620,if(harak)656+(i/2)*112 else 180+i*76,if(harak)750 else 1210,if(harak)100 else 70){recents.add(identity(e));saveState();playChecked(e);fullscreen()}.also{v->
                 v.setOnKeyListener{_,key,event->if(event.action!=0)false
-                else if(key==20&&i==9&&episodeOffset+10<all.size){episodeOffset+=10;nextEpisodeFocus=0;renderEpisodes();true}
-                else if(key==19&&i==0&&episodeOffset>0){episodeOffset=maxOf(0,episodeOffset-10);nextEpisodeFocus=9;renderEpisodes();true}else false}
+                else if(key==20&&i>=episodePage-(if(harak)2 else 1)&&episodeOffset+episodePage<all.size){episodeOffset+=episodePage;nextEpisodeFocus=0;renderEpisodes();true}
+                else if(key==19&&i<(if(harak)2 else 1)&&episodeOffset>0){episodeOffset=maxOf(0,episodeOffset-episodePage);nextEpisodeFocus=episodePage-1;renderEpisodes();true}else false}
             }
         }
-        rows.forEach{it.nextFocusRightId=eps.firstOrNull()?.id?:it.id}
-        eps.forEach{it.nextFocusLeftId=rows.firstOrNull()?.id?:it.id}
+        if(harak){
+            rows.forEachIndexed{i,v->
+                v.nextFocusLeftId=rows.getOrNull(i-1)?.id?:v.id;v.nextFocusRightId=rows.getOrNull(i+1)?.id?:v.id
+                v.nextFocusDownId=eps.firstOrNull()?.id?:v.id
+                v.nextFocusUpId=stage!!.findViewWithTag<View>("universe-back").id
+            }
+            eps.forEachIndexed{i,v->
+                v.nextFocusLeftId=if(i%2==1)eps[i-1].id else rows.firstOrNull()?.id?:v.id
+                v.nextFocusRightId=if(i%2==0)eps.getOrNull(i+1)?.id?:v.id else v.id
+                v.nextFocusUpId=eps.getOrNull(i-2)?.id?:rows.firstOrNull()?.id?:v.id
+                v.nextFocusDownId=eps.getOrNull(i+2)?.id?:v.id
+            }
+        }else{
+            rows.forEach{it.nextFocusRightId=eps.firstOrNull()?.id?:it.id}
+            eps.forEach{it.nextFocusLeftId=rows.firstOrNull()?.id?:it.id}
+        }
         text("${all.size} episodes   ·   ↑ ↓ More episodes",620,985,1200,60,25f)
         focus(if(nextSeasonFocus!=null)rows.getOrNull(nextSeasonFocus!!) else eps.getOrNull((nextEpisodeFocus?:0).coerceAtMost(eps.lastIndex.coerceAtLeast(0)))?:rows.firstOrNull());nextSeasonFocus=null;nextEpisodeFocus=null
     }
@@ -531,7 +588,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         }
         val favoriteItem=parent?:item
         val controls=FullscreenControls(context,playback,item,accent,subtitle,identity(favoriteItem) in favorites,
-            leave={back()},previous={skipFullscreen(-1)},next={skipFullscreen(1)},
+            leave={screen.back()},previous={skipFullscreen(-1)},next={skipFullscreen(1)},
             toggleFavorite={
                 if(!favorites.add(identity(favoriteItem)))favorites.remove(identity(favoriteItem))
                 saveState();identity(favoriteItem) in favorites
@@ -545,11 +602,29 @@ class ProviderUi(private val screen:UniverseScreen) {
                         .override(96,96).timeout(15000).into(image)
                 }
             })
+        controls.openChannels={openChannelList()}
         fullscreenControls=controls
         stage!!.put(controls,0,0,1920,1080)
         statusView=TextView(context).apply{text="";setTextColor(Color.WHITE);gravity=Gravity.CENTER}
         controls.stage.put(statusView!!,400,740,1120,60,27f)
         controls.initialFocus()
+    }
+    private fun openChannelList(){
+        if(playback.entry?.kind!="live"||channelOverlay!=null)return
+        val channels=(if(currentList.isEmpty())snapshot?.entries.orEmpty() else currentList)
+            .filter{it.kind=="live"&&(testMode||repository.isVisible(it))}
+        if(channels.isEmpty())return
+        fullscreenControls?.conceal()
+        val overlay=ChannelOverlay(context,channels,playback.entry?.id.orEmpty(),accent,{entry->
+            closeChannelList();selected=entry;playChecked(entry);recents.add(identity(entry));saveState()
+            fullscreen();fullscreenControls?.conceal()
+        },{closeChannelList()})
+        channelOverlay=overlay
+        stage!!.put(overlay,0,0,1920,1080)
+    }
+    private fun closeChannelList(){
+        channelOverlay?.let{stage?.removeView(it)};channelOverlay=null
+        stage?.apply{isFocusable=true;isFocusableInTouchMode=true;requestFocus()}
     }
     private fun skipFullscreen(delta:Int){
         val item=playback.entry?:return
@@ -564,10 +639,13 @@ class ProviderUi(private val screen:UniverseScreen) {
     }
     private val hiddenRemoteKeys=mutableSetOf<Int>()
     private var fullscreenClick:View?=null
+    private var channelOverlay:ChannelOverlay?=null
     /** Activity-level routing works even when no descendant currently owns focus. */
     fun fullscreenKey(event:KeyEvent):Boolean {
         if(!full)return false
         val key=event.keyCode
+        if(event.action==KeyEvent.ACTION_UP&&hiddenRemoteKeys.remove(key))return true
+        channelOverlay?.let{return it.key(event)}
         val ok=key==KeyEvent.KEYCODE_DPAD_CENTER || key==KeyEvent.KEYCODE_ENTER || key==KeyEvent.KEYCODE_NUMPAD_ENTER
         if(event.action==KeyEvent.ACTION_UP){
             if(hiddenRemoteKeys.remove(key))return true
@@ -589,6 +667,7 @@ class ProviderUi(private val screen:UniverseScreen) {
             hiddenRemoteKeys.add(key)
             if(controls.live && (key==KeyEvent.KEYCODE_DPAD_UP || key==KeyEvent.KEYCODE_DPAD_DOWN))
                 zap(if(key==KeyEvent.KEYCODE_DPAD_UP)-1 else 1,keepControlsHidden=true)
+            else if(controls.live&&ok)openChannelList()
             else controls.reveal()
             hiddenRemoteKeys.add(key)
             return true
@@ -658,6 +737,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         return false
     }
     fun back():Boolean{
+        if(channelOverlay!=null){closeChannelList();return true}
         if(moving!=null){clearMoveInput();finishMove(false);return true}
         if(full){full=false;if(mode=="live")browse(mode) else {playback.stop();if(mode=="series")renderEpisodes() else detail(false)};return true}
         return false
