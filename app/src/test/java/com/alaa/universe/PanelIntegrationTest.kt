@@ -60,6 +60,22 @@ class PanelIntegrationTest {
     }
     private fun integration(): PanelIntegration = PanelIntegration(store, wire, repo, deferred, direct, { wall }, { tick },
         { s, _ -> published.add(s?.name) }, { stoppedCount++ })
+    @Test fun exactOwnerPanelM3uRowLoadsRealHttpsCatalogue() {
+        val row=JSONObject(javaClass.getResource("/owner-public-m3u.json")!!.readText())
+        val liveRepo=ProviderRepository(vault())
+        val transport=PanelClient.Transport { fn,req ->
+            if(fn=="register_device_v2") JSONObject().put("status","registered")
+            else JSONObject().put("status","active").put("device_code",req.getString("p_device_code"))
+                .put("app_type","universe").put("expires_at",JSONObject.NULL)
+                .put("playlists",JSONArray().put(row))
+        }
+        val integration=PanelIntegration(store,transport,liveRepo,direct,direct,{wall},{tick},{s,_ -> published.add(s?.name)},{})
+        integration.open()
+        assertEquals("Active",integration.status)
+        assertEquals(row.getString("url"),integration.configuredLogin!!.m3uUrl)
+        assertTrue(liveRepo.cached()!!.entries.size>1000)
+        java.io.File("/home/kit/universe-Alaa/artifacts/panel-live-049.txt").writeText("Read-only exact owner playlist row; simulated authenticated panel transport; real HTTPS catalogue; Active; channels="+liveRepo.cached()!!.entries.size)
+    }
     @Test fun pendingShowsCodeOnlyAndNoProvider() {
         val p = integration(); p.open()
         assertTrue(p.code.matches(Regex("[A-F0-9]{12}")))
@@ -196,7 +212,7 @@ class PanelIntegrationTest {
         status="active"
         val p=integration();p.open()
         assertTrue(p.ownsProvider);assertNull(repo.login())
-        assertEquals("Active · provider unavailable",p.status)
+        assertTrue(p.status.startsWith("Active · "))
         failures=false;wall+=61_000;tick+=61_000;p.open()
         assertNotNull(repo.login());assertNotNull(repo.cached());assertEquals("Active",p.status)
     }

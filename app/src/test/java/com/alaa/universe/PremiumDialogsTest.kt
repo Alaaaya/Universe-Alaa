@@ -25,7 +25,7 @@ class PremiumDialogsTest {
  private fun all(v:View):List<View> = listOf(v)+if(v is ViewGroup)(0 until v.childCount).flatMap{all(v.getChildAt(it))}else emptyList()
  private fun layout(v:View,w:Int,h:Int){v.measure(View.MeasureSpec.makeMeasureSpec(w,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(h,View.MeasureSpec.AT_MOST));v.layout(0,0,w,v.measuredHeight)}
  @Test fun nativeDialogMatrix(){
-    val out=File("/home/kit/universe-Alaa/artifacts/qa-0.4.8").apply{mkdirs()}
+    val out=File("/home/kit/universe-Alaa/artifacts/qa-0.4.9").apply{mkdirs()}
     for(device in listOf("phone","tv"))for(theme in listOf("red","gold","blue","royal","prayer","harak")){
         val w=if(device=="tv")1920 else 960;val h=if(device=="tv")1080 else 540
         RuntimeEnvironment.setQualifiers("w"+w+"dp-h"+h+"dp-land"+(if(device=="tv")"-television" else "")+"-mdpi")
@@ -34,7 +34,7 @@ class PremiumDialogsTest {
         val s=UniverseScreen(a);a.setContentView(s);s.provider.testMode=true;s.home();s.provider.loginDialog()
         val d=ShadowAlertDialog.getLatestAlertDialog();assertTrue(d.isShowing)
         val decor=d.window!!.decorView
-        val fields=all(decor).filterIsInstance<EditText>();assertEquals(5,fields.size)
+        val fields=all(decor).filterIsInstance<EditText>();assertEquals(5,fields.size);assertFalse(fields.last().transformationMethod is android.text.method.PasswordTransformationMethod)
         assertTrue(fields.all{it.background!=null});assertTrue(all(decor).filterIsInstance<ScrollView>().isNotEmpty())
         fun shot(suffix:String,maxH:Int=h){
             layout(decor,minOf(660,w-32),maxH)

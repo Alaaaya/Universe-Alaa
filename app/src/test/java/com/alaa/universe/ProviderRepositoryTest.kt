@@ -10,6 +10,21 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
 class ProviderRepositoryTest {
+    @Test fun livePublicHttpsM3uStreamsAndPersistsWithoutCredentials() {
+        val repo=ProviderRepository(fixtureVault())
+        val result=repo.connect(ProviderLogin("Public live test","",m3uUrl="https://iptv-org.github.io/iptv/index.m3u"))
+        assertTrue("Expected thousands of supported HTTPS channels",result.entries.size>1000)
+        assertTrue(result.entries.all { it.directUrl.startsWith("https://") })
+        assertEquals(result.entries.size,repo.cached()!!.entries.size)
+        java.io.File("/home/kit/universe-Alaa/artifacts/live-public-049.txt").writeText("Real HTTPS connect and encrypted cache roundtrip succeeded; supported HTTPS entries="+result.entries.size)
+    }
+    @Test fun mixedM3uSkipsUnsupportedInsteadOfRejectingWholeList() {
+        val text="#EXTM3U\n#EXTINF:-1,HTTP\nhttp://example.test/live\n#EXTINF:-1,Bad\nudp://224.0.0.1:1234\n#EXTINF:-1,HTTPS\nhttps://example.test/live"
+        val clean=ProviderRepository.parseM3u(text,ProviderLogin("Mixed","",m3uUrl="https://example.test/list"))
+        assertEquals(listOf("HTTPS"),clean.entries.map{it.name})
+        val permitted=ProviderRepository.parseM3u(text,ProviderLogin("Mixed","",m3uUrl="https://example.test/list",allowHttp=true))
+        assertEquals(2,permitted.entries.size)
+    }
     private fun rejects(block: () -> Unit) {
         try { block(); fail("Expected rejection") } catch (_: IllegalArgumentException) {} catch (_: IllegalStateException) {}
     }

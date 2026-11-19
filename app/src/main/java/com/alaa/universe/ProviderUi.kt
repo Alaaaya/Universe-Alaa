@@ -266,7 +266,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         device.addView(PremiumDialogs.text(context,panelSummary(),13f),LinearLayout.LayoutParams(0,-2,1f))
         device.addView(PremiumDialogs.button(context,"Copy"){(context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Device code",if(testMode)"" else panel.code));toast("Device code copied")})
         root.addView(device)
-        val tabs=LinearLayout(context).apply{orientation=LinearLayout.HORIZONTAL;setPadding(0,12,0,12)};root.addView(tabs)
+        val tabs=LinearLayout(context).apply{orientation=LinearLayout.HORIZONTAL;setPadding(0,12,0,12)};root.addView(tabs,LinearLayout.LayoutParams(-1,PremiumDialogs.dp(context,80)))
         val xtream=LinearLayout(context).apply{orientation=LinearLayout.VERTICAL}
         val m3uGroup=LinearLayout(context).apply{orientation=LinearLayout.VERTICAL;visibility=View.GONE}
         fun field(parent:LinearLayout,label:String,hint:String,password:Boolean=false):EditText {
@@ -287,7 +287,9 @@ class ProviderUi(private val screen:UniverseScreen) {
         val server=field(xtream,"Server address","https://provider.example")
         val username=field(xtream,"Username","Your username")
         val password=field(xtream,"Password","Your password",true)
-        val m3u=field(m3uGroup,"M3U playlist URL","https://provider.example/playlist.m3u",true)
+        val m3u=field(m3uGroup,"M3U playlist URL","https://provider.example/playlist.m3u")
+        val saved=if(!testMode && panel.ownsProvider)panel.configuredLogin else repository.login()
+        saved?.let{name.setText(it.name);server.setText(it.server);username.setText(it.username);password.setText(it.password);m3u.setText(it.m3uUrl)}
         var useM3u=false
         lateinit var xTab:Button;lateinit var mTab:Button
         fun select(m:Boolean){useM3u=m;xtream.visibility=if(m)View.GONE else View.VISIBLE;m3uGroup.visibility=if(m)View.VISIBLE else View.GONE
@@ -298,11 +300,12 @@ class ProviderUi(private val screen:UniverseScreen) {
         }
         xTab=PremiumDialogs.button(context,"✓  Xtream",true){select(false)}
         mTab=PremiumDialogs.button(context,"M3U URL"){select(true)}
-        tabs.addView(xTab,LinearLayout.LayoutParams(0,PremiumDialogs.dp(context,48),1f).apply{marginEnd=8})
-        tabs.addView(mTab,LinearLayout.LayoutParams(0,PremiumDialogs.dp(context,48),1f))
-        val http=CheckBox(context).apply{text="Allow insecure HTTP (credentials may be exposed)";textSize=12f;buttonTintList=android.content.res.ColorStateList.valueOf(PremiumDialogs.accent(context));root.addView(this)}
+        tabs.addView(xTab,LinearLayout.LayoutParams(0,PremiumDialogs.dp(context,56),1f).apply{marginEnd=8})
+        tabs.addView(mTab,LinearLayout.LayoutParams(0,PremiumDialogs.dp(context,56),1f))
+        select(saved?.m3uUrl?.isNotBlank()==true)
+        val http=CheckBox(context).apply{isChecked=saved?.allowHttp==true;text="Allow insecure HTTP (credentials may be exposed)";textSize=12f;buttonTintList=android.content.res.ColorStateList.valueOf(PremiumDialogs.accent(context));root.addView(this)}
         val help=PremiumDialogs.text(context,"Use HTTPS where supported. Credentials stay encrypted on this device.",12f);root.addView(help)
-        root.addView(PremiumDialogs.button(context,"Remove saved playlist",danger=true){confirmRemove()})
+        root.addView(PremiumDialogs.button(context,"Remove saved playlist",danger=true){confirmRemove()},LinearLayout.LayoutParams(-2,PremiumDialogs.dp(context,48)))
         val scroll=ScrollView(context).apply{isFillViewport=false;addView(root)}
         val dialog=PremiumDialogs.builder(context).setTitle("Connect playlist").setView(scroll).setNegativeButton("Cancel",null)
             .setPositiveButton("Connect",null).create()
@@ -321,7 +324,7 @@ class ProviderUi(private val screen:UniverseScreen) {
                             snapshot=it;imageHttpAllowed=login.allowHttp;recents.clear();saveState()
                             password.text.clear();m3u.text.clear();dialog.dismiss();screen.home()
                         }
-                        result.onFailure{help.text="Connection failed. Check the URL, credentials, subscription and HTTP permission.";dialog.getButton(-1).isEnabled=true}
+                        result.onFailure{help.text=it.message ?: "Connection failed.";dialog.getButton(-1).isEnabled=true}
                     }
                 }
             }

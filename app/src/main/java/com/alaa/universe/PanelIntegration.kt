@@ -30,6 +30,7 @@ internal class PanelIntegration(
     private var lastWall=0L
     private var leaseSeen=false
     private var cacheRejected=false
+    @Volatile var configuredLogin:ProviderLogin?=null; private set
     @Volatile var ownsProvider=false; private set
     @Volatile var code=""; private set
     @Volatile var status="Waiting for activation"; private set
@@ -88,7 +89,7 @@ internal class PanelIntegration(
                 val ticket=generation
                 if(!sameProvider)repository.clear()
                 val policyChanged=repository.applyCategoryPolicy(retained)
-                configKey=key;ownsProvider=true;status="Connecting playlist";loading=true
+                configuredLogin=login;configKey=key;ownsProvider=true;status="Connecting playlist";loading=true
                 // Policy-only changes keep visible content and fetch category metadata, NOT newly unhidden streams.
                 val load: () -> ProviderSnapshot = if(sameProvider && policyChanged && repository.cached()!=null && type=="xtream")
                     ({ repository.refreshCategories() }) else repository.prepareConnect(login, loadAllCategories=false)
@@ -102,7 +103,7 @@ internal class PanelIntegration(
                     main.execute { synchronized(lock) {
                         if(ticket==generation && !closed && valid()) {
                             loading=false
-                            status=if(result.isSuccess)"Active" else "Active · provider unavailable"
+                            status=if(result.isSuccess)"Active" else "Active · "+(result.exceptionOrNull()?.message ?: "provider unavailable")
                             changed(result.getOrNull()?:cached,status)
                         }
                     } }
@@ -127,7 +128,7 @@ internal class PanelIntegration(
         synchronized(lock) {
             cacheRejected=true
             ++generation;configKey=null;loading=false;wallDeadline=0;elapsedDeadline=0
-            val wasOwned=ownsProvider;ownsProvider=false
+            val wasOwned=ownsProvider;ownsProvider=false;configuredLogin=null
             status=when(reason){"pending"->"Waiting for activation";"expired","cache_expired"->"Subscription expired";else->"Subscription unavailable"}
             // Also removes panel remnants on startup, even when no lease was restored.
             runCatching{repository.clear()}

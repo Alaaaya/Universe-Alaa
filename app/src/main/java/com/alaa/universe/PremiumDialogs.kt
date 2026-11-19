@@ -29,8 +29,9 @@ object PremiumDialogs {
         text=value;textSize=size;setTextColor(0xffc4cedf.toInt());textDirection=View.TEXT_DIRECTION_FIRST_STRONG
         setPadding(0,dp(c,8),0,dp(c,8))
     }
+    private fun ink(c:Context)=if(accent(c)==0xffe50914.toInt())Color.WHITE else 0xff090e17.toInt()
     fun button(c:Context,label:String,primary:Boolean=false,danger:Boolean=false,action:()->Unit)=Button(c).apply{
-        text=label;isAllCaps=false;textSize=14f;setTextColor(if(danger)0xffff929b.toInt() else if(primary)0xff090e17.toInt() else Color.WHITE)
+        text=label;isAllCaps=false;textSize=14f;setTextColor(if(danger)0xffff929b.toInt() else if(primary)ink(c) else Color.WHITE)
         typeface=Typeface.create("sans-serif-medium",Typeface.NORMAL);background=focus(c,primary,danger)
         minimumHeight=dp(c,48);minHeight=dp(c,48);isFocusable=true;setPadding(dp(c,16),0,dp(c,16),0)
         setOnClickListener{action()}
@@ -46,7 +47,11 @@ object PremiumDialogs {
             setBackgroundDrawable(surface(c,0xff101722.toInt(),accent(c)))
             addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);attributes=attributes.apply{dimAmount=.72f}
             setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-            setLayout(minOf(dp(c,660),(c.resources.displayMetrics.widthPixels*.94f).toInt()),WindowManager.LayoutParams.WRAP_CONTENT)
+            val bounds=c.resources.displayMetrics
+            val availableHeight=(bounds.heightPixels*.88f).toInt()
+            decorView.setPadding(dp(c,8),dp(c,8),dp(c,8),dp(c,8))
+            setLayout(minOf(dp(c,660),(bounds.widthPixels*.90f).toInt()),WindowManager.LayoutParams.WRAP_CONTENT)
+            decorView.minimumHeight=0
         }
         fun walk(v:View){
             if(v is TextView){
@@ -61,8 +66,8 @@ object PremiumDialogs {
         listOf(-1,-2,-3).forEach{which->d.getButton(which)?.let{b->
             val danger=b.text.toString().contains("Remove",true)
             b.isAllCaps=false;b.textSize=14f;b.background=focus(c,which == -1,danger)
-            b.setTextColor(if(danger)0xffff929b.toInt() else if(which == -1)0xff090e17.toInt() else Color.WHITE)
-            b.minHeight=dp(c,48);b.minimumHeight=dp(c,48);b.setPadding(dp(c,16),0,dp(c,16),0)
+            b.setTextColor(if(danger)0xffff929b.toInt() else if(which == -1)ink(c) else Color.WHITE)
+            b.minHeight=dp(c,48);b.minimumHeight=dp(c,48);b.includeFontPadding=true;b.setPadding(dp(c,16),0,dp(c,16),0)
             (b.layoutParams as? ViewGroup.MarginLayoutParams)?.let{it.setMargins(dp(c,4),dp(c,8),dp(c,4),dp(c,8));b.layoutParams=it}
         }}
     }

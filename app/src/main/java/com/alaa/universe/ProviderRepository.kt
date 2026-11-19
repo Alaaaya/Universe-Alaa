@@ -148,7 +148,7 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
         operation
     }
     private fun loadAndPublish(login: ProviderLogin, ticket: Long, loadAllCategories: Boolean = true): ProviderSnapshot {
-        val result = if (login.m3uUrl.isNotBlank()) parseM3u(fetch(login.m3uUrl, login, ticket), login) else loadXtream(login, ticket, loadAllCategories)
+        val result = if (login.m3uUrl.isNotBlank()) loadM3u(login, ticket) else loadXtream(login, ticket, loadAllCategories)
         persist(login, result, ticket)
         return result
     }
@@ -489,12 +489,58 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
             return out.toString("UTF-8")
         } finally { synchronized(stateLock) { connections.remove(c) }; c.disconnect() }
     }
+    private fun loadM3u(l: ProviderLogin, ticket: Long): ProviderSnapshot {
+        testFetch?.let { return parseM3u(it(l.m3uUrl), l) }
+        var url = validatedUrl(l.m3uUrl, l.allowHttp)
+        val deadline = System.nanoTime() + 120_000_000_000L
+        repeat(6) {
+            checkTicket(ticket)
+            val c = url.toURL().openConnection() as HttpURLConnection
+            synchronized(stateLock) { checkTicket(ticket); connections.add(c) }
+            try {
+                c.connectTimeout=20000; c.readTimeout=45000; c.instanceFollowRedirects=false
+                c.setRequestProperty("Accept", "application/x-mpegURL, audio/x-mpegurl, text/plain")
+                c.setRequestProperty("User-Agent", "Universe-Alaa/0.4.9")
+                val status=c.responseCode
+                if(status in listOf(301,302,303,307,308)) {
+                    val target=url.resolve(c.getHeaderField("Location") ?: throw ProviderFailure("Playlist redirect has no destination."))
+                    // Never forward query credentials cross-origin or downgrade HTTPS.
+                    if(url.scheme=="https" && target.scheme!="https") throw ProviderFailure("Playlist redirected to insecure HTTP.")
+                    if((url.host!=target.host || url.port!=target.port) && (url.rawQuery!=null || target.rawQuery!=null))
+                        throw ProviderFailure("Playlist redirect with private query credentials was blocked.")
+                    url=validatedUrl(target.toASCIIString(),l.allowHttp)
+                } else {
+                    if(status !in 200..299) throw ProviderFailure("Playlist server returned HTTP $status.")
+                    if(c.contentLengthLong>MAX_BYTES) throw ProviderFailure("Playlist exceeds the 32 MB limit.")
+                    var count=0L
+                    val bounded=object:java.io.FilterInputStream(c.inputStream) {
+                        override fun read(b:ByteArray,off:Int,len:Int):Int {
+                            checkTicket(ticket)
+                            if(System.nanoTime()>deadline)throw ProviderFailure("Playlist download timed out.")
+                            val n=super.read(b,off,len)
+                            if(n>0)count+=n
+                            if(count>MAX_BYTES)throw ProviderFailure("Playlist exceeds the 32 MB limit.")
+                            return n
+                        }
+                    }
+                    return bounded.bufferedReader(Charsets.UTF_8).use { parseM3uReader(it,l) }
+                }
+            } finally { synchronized(stateLock){connections.remove(c)};c.disconnect() }
+        }
+        throw ProviderFailure("Playlist redirected too many times.")
+    }
+    private class ProviderFailure(message:String):IllegalStateException(message)
     private fun episodeKey(l: ProviderLogin, e: MediaEntry): String {
         val bytes = (l.server + "\u0000" + l.username + "\u0000" + l.password + "\u0000" + l.m3uUrl + "\u0000" + e.id).toByteArray()
         return "episodes_" + MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
     }
     private fun <T> safe(block: () -> T): T = try { block() } catch (_: UnsupportedOperationException) {
         throw UnsupportedOperationException("M3U playlists do not provide a series episode catalogue.")
+    } catch (e: ProviderFailure) { throw e
+    } catch (_: java.net.SocketTimeoutException) { throw ProviderFailure("Playlist server timed out. Try again.")
+    } catch (_: java.net.UnknownHostException) { throw ProviderFailure("Server hostname could not be resolved. Check your connection and URL.")
+    } catch (_: javax.net.ssl.SSLException) { throw ProviderFailure("The server TLS certificate could not be verified.")
+    } catch (_: java.net.ConnectException) { throw ProviderFailure("Could not reach the server. Check your connection.")
     } catch (_: Exception) {
         // No raw parser/network exceptions, causes or URL-bearing messages reach UI/crash reporters.
         throw IllegalStateException("Provider operation failed. Check connection, credentials and HTTP permission.")
@@ -523,13 +569,16 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
             check(user != null && user.optString("auth") == "1" && user.optString("status").equals("Active", true)) { "Provider authentication rejected." }
             return user
         }
-        internal fun parseM3u(text: String, login: ProviderLogin): ProviderSnapshot {
-            require(text.trimStart('\uFEFF', ' ', '\r', '\n').startsWith("#EXTM3U")) { "Not an M3U playlist." }
+        internal fun parseM3u(text: String, login: ProviderLogin): ProviderSnapshot =
+            text.reader().buffered().use { parseM3uReader(it,login) }
+        private fun parseM3uReader(reader: java.io.BufferedReader, login: ProviderLogin): ProviderSnapshot {
+            val header=reader.readLine().orEmpty().trimStart('\uFEFF',' ')
+            if(!header.startsWith("#EXTM3U")) throw ProviderFailure("The server did not return an M3U playlist.")
             val entries = mutableListOf<MediaEntry>()
             val groups = linkedMapOf<String, MediaCategory>()
             var title: String? = null
             var attrs = emptyMap<String, String>()
-            for (raw in text.lineSequence()) {
+            for (raw in reader.lineSequence()) {
                 val line = raw.trim()
                 if (line.startsWith("#EXTINF:", true)) {
                     // Find the title separator outside quoted attributes, including commas in group names.
@@ -549,7 +598,10 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
                     attrs = attrs + ("group-title" to line.substringAfter(':').trim())
                 } else if (line.isNotEmpty() && !line.startsWith("#")) {
                     // Preserve the full URL, including query tokens; never attempt filename reconstruction.
-                    val uri = validatedUrl(line, login.allowHttp)
+                    val uri = try { validatedUrl(line, login.allowHttp) } catch (_:IllegalArgumentException) {
+                        // One unsupported or HTTP-only stream must not reject a mixed public list.
+                        title=null;attrs=emptyMap();continue
+                    }
                     val group = attrs["group-title"].orEmpty().ifBlank { "Other" }
                     val kind = if (Regex("(?i).*\\.(mp4|mkv|avi|mov|m4v|webm)$").matches(uri.path.orEmpty())) "movie" else "live"
                     val category = "$kind:$group"
@@ -560,7 +612,7 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
                     title = null; attrs = emptyMap()
                 }
             }
-            require(entries.isNotEmpty()) { "Playlist has no supported streams." }
+            if(entries.isEmpty()) throw ProviderFailure("Playlist has no supported streams. If it contains HTTP-only channels, enable insecure HTTP.")
             return ProviderSnapshot(login.name, null, entries, groups.values.toList())
         }
     }
