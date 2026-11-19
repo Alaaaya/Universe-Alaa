@@ -18,7 +18,7 @@ import org.robolectric.annotation.GraphicsMode
 import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk=[28],qualifiers="w393dp-h852dp-port-mdpi")
+@Config(sdk=[28],qualifiers="w960dp-h540dp-land-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PhoneTouchTest {
  private lateinit var activity:Activity
@@ -26,111 +26,99 @@ class PhoneTouchTest {
     activity=Robolectric.buildActivity(Activity::class.java).setup().get()
     shadowOf(activity.packageManager).setSystemFeature("android.hardware.touchscreen",true)
  }
- private fun layout(stage:Stage){
-    stage.measure(View.MeasureSpec.makeMeasureSpec(393,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(852,View.MeasureSpec.EXACTLY))
-    stage.layout(0,0,393,852)
+ private fun layout(view:View,w:Int=960,h:Int=540){
+    view.measure(View.MeasureSpec.makeMeasureSpec(w,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(h,View.MeasureSpec.EXACTLY))
+    view.layout(0,0,w,h)
  }
- @Test fun readableTargetsAndScrollableList(){
-    val stage=Stage(activity);activity.setContentView(stage)
-    val rows=(0..30).map{i->TextView(activity).apply{
-        text="Channel $i";isClickable=true;isFocusableInTouchMode=true
-        stage.put(this,0,160+i*60,400,60,28f)
-    }}
+ @Test fun identicalSceneCoordinatesAtPhoneSize(){
+    val stage=Stage(activity)
+    val row=TextView(activity).apply{text="TV layout";isClickable=true}
+    stage.put(row,100,200,400,80,40f)
     layout(stage)
-    assertEquals(56,rows.first().height)
-    assertTrue(rows.first().width>=350)
-    assertFalse(rows.first().isFocusableInTouchMode)
-    val down=MotionEvent.obtain(0,0,0,100f,700f,0)
+    assertEquals(50,row.left);assertEquals(100,row.top)
+    assertEquals(200,row.width);assertEquals(40,row.height)
+    assertEquals(20f,row.textSize,0.01f)
+    layout(stage,1920,1080)
+    assertEquals(100,row.left);assertEquals(200,row.top)
+    assertEquals(400,row.width);assertEquals(80,row.height)
+ }
+ private fun swipe(stage:Stage,x:Float=700f,y:Float=400f){
+    val now=android.os.SystemClock.uptimeMillis()
+    val down=MotionEvent.obtain(now,now,0,x,y,0)
+    val move=MotionEvent.obtain(now,now+20,2,x,y-150,0)
+    val up=MotionEvent.obtain(now,now+40,1,x,y-150,0)
     stage.onInterceptTouchEvent(down)
-    val move=MotionEvent.obtain(0,20,2,100f,100f,0)
     assertTrue(stage.onInterceptTouchEvent(move))
-    stage.onTouchEvent(move)
-    assertTrue(stage.scrollY>0)
-    down.recycle();move.recycle()
+    stage.onTouchEvent(move);stage.onTouchEvent(up)
+    down.recycle();move.recycle();up.recycle()
  }
- @Test fun capturePhoneScreens(){
-    val s=UniverseScreen(activity);s.provider.testMode=true;activity.setContentView(s)
-    val out=File("/home/kit/universe-Alaa/artifacts").apply{mkdirs()}
-    fun shot(name:String){
-        s.measure(View.MeasureSpec.makeMeasureSpec(393,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(852,View.MeasureSpec.EXACTLY))
-        s.layout(0,0,393,852)
-        // Harak fades in over 250ms on actual devices. Capture its settled frame.
-        shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(300))
-        val bitmap=Bitmap.createBitmap(393,852,Bitmap.Config.ARGB_8888)
-        s.draw(Canvas(bitmap));File(out,"phone-$name.png").outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
-    }
-    s.home();shot("home")
-    s.openThemes();shot("settings")
-    val p=s.provider
-    ProviderUi::class.java.getDeclaredField("snapshot").apply{isAccessible=true}.set(p,ProviderSnapshot(
-        name="Phone QA",expires=null,categories=listOf(MediaCategory("ar","AR | Syria","live")),
-        entries=(1..30).map{MediaEntry("$it","Channel $it","ar","live")}
-    ))
-    p.browse("live");shot("live")
-    s.theme="harak";s.home();shot("harak-home")
-    s.theme="red"
-    for(kind in listOf("movie","series")){
-        ProviderUi::class.java.getDeclaredField("snapshot").apply{isAccessible=true}.set(p,ProviderSnapshot(
-            "Phone QA",null,(1..30).map{MediaEntry("$kind-$it","Title $it","cat",kind)},
-            listOf(MediaCategory("cat","4K NETFLIX",kind))
-        ))
-        p.browse(kind);shot(kind)
-    }
-    val session=p.playback
-    val controls=FullscreenControls(activity,session,MediaEntry("1","Channel 1","ar","live"),Harak.GOLD,"Live TV",false,{}, {}, {}, {false},{})
-    s.removeAllViews();s.addView(controls);shot("player")
-    p.close()
- }
- @Test fun landscapeKeepsReadableTargets(){
-    val stage=Stage(activity);activity.setContentView(stage)
-    val button=TextView(activity).apply{text="Touch me";isClickable=true}
-    stage.put(button,0,0,400,80,40f)
-    stage.measure(View.MeasureSpec.makeMeasureSpec(852,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(393,View.MeasureSpec.EXACTLY))
-    stage.layout(0,0,852,393)
-    assertEquals(56,button.height);assertEquals(820,button.width)
+ @Test fun swipePagesWithoutMovingScene(){
+    val stage=Stage(activity);var calls=0
+    stage.swipe={x,_,_,dy->assertEquals(1400f,x,0.01f);assertTrue(dy<0);calls++}
+    layout(stage);swipe(stage)
+    assertEquals(1,calls);assertEquals(0,stage.scrollY)
  }
  @Test fun firstTapActivatesWithoutFocusPriming(){
-    val stage=Stage(activity);activity.setContentView(stage)
-    var clicks=0
+    val stage=Stage(activity);activity.setContentView(stage);var clicks=0
     val button=TextView(activity).apply{text="Tap";isFocusableInTouchMode=true;setOnClickListener{clicks++}}
-    stage.put(button,0,0,400,80,40f);layout(stage)
+    stage.put(button,100,100,400,80,40f);layout(stage)
     val now=android.os.SystemClock.uptimeMillis()
-    val down=MotionEvent.obtain(now,now,MotionEvent.ACTION_DOWN,100f,30f,0)
-    val up=MotionEvent.obtain(now,now+30,MotionEvent.ACTION_UP,100f,30f,0)
+    val down=MotionEvent.obtain(now,now,0,100f,60f,0)
+    val up=MotionEvent.obtain(now,now+30,1,100f,60f,0)
     stage.dispatchTouchEvent(down);stage.dispatchTouchEvent(up)
     shadowOf(android.os.Looper.getMainLooper()).idle()
-    assertEquals(1,clicks)
-    down.recycle();up.recycle()
+    assertEquals(1,clicks);down.recycle();up.recycle()
  }
-
  @Test fun televisionWithTouchscreenKeepsOriginalGeometry(){
     shadowOf(activity.getSystemService(android.content.Context.UI_MODE_SERVICE) as android.app.UiModeManager)
         .setCurrentModeType(android.content.res.Configuration.UI_MODE_TYPE_TELEVISION)
     assertFalse(PhoneInput.enabled(activity))
     val stage=Stage(activity);val button=TextView(activity).apply{text="TV";isClickable=true}
-    stage.put(button,100,200,400,80,40f)
-    stage.measure(View.MeasureSpec.makeMeasureSpec(1920,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(1080,View.MeasureSpec.EXACTLY))
-    stage.layout(0,0,1920,1080)
+    stage.put(button,100,200,400,80,40f);layout(stage,1920,1080)
     assertEquals(100,button.left);assertEquals(200,button.top);assertEquals(400,button.width);assertEquals(80,button.height)
  }
- @Test fun posterTouchRowsUseFullTitleNotPlaceholder(){
-    val stage=Stage(activity)
-    val card=TextView(activity).apply{isClickable=true}
-    stage.put(card,500,160,253,370)
-    stage.put(TextView(activity).apply{text="T"},514,188,225,265)
-    stage.put(TextView(activity).apply{text="The Full Movie Title"},512,470,229,52)
-    layout(stage)
-    assertEquals("The Full Movie Title",card.text.toString())
- }
- @Test fun phonePlayerHasTouchActions(){
+ @Test fun phonePlayerUsesSameNativeControls(){
     val p=PlaybackSession(activity,{ProviderRepository(activity)}){}
-    var skipped=0;var back=false
-    val controls=FullscreenControls(activity,p,MediaEntry("1","Live","c","live"),Harak.GOLD,"Live",false,{back=true},{skipped--},{skipped++},{false},{})
-    fun all(v:View):List<View> = listOf(v)+if(v is android.view.ViewGroup)(0 until v.childCount).flatMap{all(v.getChildAt(it))}else emptyList()
-    val views=all(controls)
-    views.first{it.contentDescription=="Next" && it is android.widget.Button}.performClick()
-    assertEquals(1,skipped)
-    views.first{it.contentDescription=="Back" && it is android.widget.Button}.performClick()
-    assertTrue(back);p.stop()
+    var back=false
+    val controls=FullscreenControls(activity,p,MediaEntry("1","Live","c","live"),Harak.GOLD,"Live",false,{back=true},{},{},{false},{})
+    layout(controls)
+    assertEquals(1,controls.childCount);assertEquals(View.VISIBLE,controls.stage.visibility)
+    controls.stage.findViewWithTag<View>("universe-back").performClick()
+    assertTrue(back)
+    controls.conceal();assertTrue(controls.reveal());assertEquals(View.VISIBLE,controls.visibility)
+    p.stop()
+ }
+ @Test fun capturePhoneAndTvSameScenes(){
+    val s=UniverseScreen(activity);s.fixedClock="12:34";s.provider.testMode=true
+    val out=File("/home/kit/universe-Alaa/artifacts/qa-0.4.7").apply{mkdirs()}
+    fun shot(name:String){
+        for((label,size) in listOf("phone" to (960 to 540),"tv" to (1920 to 1080))){
+            layout(s,size.first,size.second)
+            shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(300))
+            val bitmap=Bitmap.createBitmap(size.first,size.second,Bitmap.Config.ARGB_8888)
+            s.draw(Canvas(bitmap));File(out,"$label-$name.png").outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
+        }
+    }
+    val p=s.provider
+    fun data(kind:String){
+        ProviderUi::class.java.getDeclaredField("snapshot").apply{isAccessible=true}.set(p,ProviderSnapshot(
+            "Layout QA",null,(1..30).map{MediaEntry("$kind-$it","Title $it","cat",kind)},
+            listOf(MediaCategory("cat","4K NETFLIX",kind))
+        ))
+    }
+    for(theme in listOf("red","gold","royal","harak")){
+        s.theme=theme;s.home();shot("$theme-home")
+        s.openThemes();shot("$theme-settings")
+        for(kind in listOf("live","movie","series")){data(kind);p.browse(kind);shot("$theme-$kind")}
+        val controls=FullscreenControls(activity,p.playback,MediaEntry("1","Channel 1","cat","live"),
+            if(theme=="harak")Harak.GOLD else android.graphics.Color.RED,"Live TV",false,{},{},{},{false},{})
+        s.removeAllViews();s.addView(controls);shot("$theme-player")
+    }
+    data("movie");p.browse("movie");layout(s)
+    val stage=s.getChildAt(0) as Stage
+    swipe(stage)
+    val offset=ProviderUi::class.java.getDeclaredField("offset").apply{isAccessible=true}.getInt(p)
+    assertEquals(10,offset)
+    p.close()
  }
 }

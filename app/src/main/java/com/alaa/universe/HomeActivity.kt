@@ -9,7 +9,7 @@ class HomeActivity : Activity() {
     lateinit var screen: UniverseScreen
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if(!PhoneInput.enabled(this))requestedOrientation=android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        requestedOrientation=android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or
             View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         com.bumptech.glide.Glide.init(applicationContext,com.bumptech.glide.GlideBuilder().setLogLevel(android.util.Log.ERROR))

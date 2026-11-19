@@ -18,11 +18,7 @@ class ChannelOverlay(context:Context,private val channels:List<MediaEntry>,playi
         val back=BackButton.add(stage,accent,close)
         Harak.label(stage,"القنوات",120,24,480,72,32f)
         val start=(at-4).coerceIn(0,(channels.size-9).coerceAtLeast(0))
-        if(PhoneInput.enabled(context)){
-            stage.setBackgroundColor(0xff101018.toInt())
-            if(start>0)Harak.button(stage,"Previous channels",28,1000,280,64,24f){at=(at-9).coerceAtLeast(0);render()}
-            if(start+9<channels.size)Harak.button(stage,"More channels",330,1000,280,64,24f){at=(at+9).coerceAtMost(channels.lastIndex);render()}
-        }
+        stage.swipe={_,_,_,dy->at=(at+if(dy<0)9 else -9).coerceIn(0,channels.lastIndex.coerceAtLeast(0));render()}
         channels.drop(start).take(9).forEachIndexed{i,e->
             val row=Harak.button(stage,e.name,28,126+i*98,602,86,26f){choose(e)}
             row.contentDescription="Channel ${e.name}"

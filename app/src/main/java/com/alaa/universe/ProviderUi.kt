@@ -422,11 +422,12 @@ class ProviderUi(private val screen:UniverseScreen) {
                 else false
             }}
         }
-        if(PhoneInput.enabled(context)){
-            if(catOffset>0)button("Previous categories",0,1060,400,60){catOffset=maxOf(0,catOffset-categoryPage);browse(mode,categoryOnly)}
-            if(catOffset+categoryPage<cats.size)button("More categories",420,1060,400,60){catOffset+=categoryPage;browse(mode,categoryOnly)}
-        }
         if(categoryOnly){
+            stage!!.swipe={_,_,dx,dy->
+                val forward=if(kotlin.math.abs(dy)>=kotlin.math.abs(dx))dy<0 else dx<0
+                catOffset=(catOffset+(if(forward)categoryPage else -categoryPage)).coerceIn(0,maxOf(0,cats.size-categoryPage))
+                browse(mode,true)
+            }
             text(snapshot?.name.orEmpty(),1070,410,760,90,46f)
             text(if(moving!=null)"↑ ↓ Move   OK Save   BACK Cancel" else "Choose a category to watch",1070,520,800,65)
             text("Hold OK for category options",1070,620,760,65)
@@ -468,9 +469,13 @@ class ProviderUi(private val screen:UniverseScreen) {
             v.nextFocusUpId=cards.getOrNull(i-(if(live)1 else 5))?.id?:v.id
             v.nextFocusDownId=cards.getOrNull(i+(if(live)1 else 5))?.id?:v.id
         }
-        if(PhoneInput.enabled(context)){
-            if(offset>0)button("Previous items",0,1140,400,60){offset=maxOf(0,offset-count);browse(mode)}
-            if(offset+count<currentList.size)button("More items",420,1140,400,60){offset+=count;browse(mode)}
+        stage!!.swipe={x,_,dx,dy->
+            val forward=if(kotlin.math.abs(dy)>=kotlin.math.abs(dx))dy<0 else dx<0
+            val step=if(forward)1 else -1
+            if(x<(if(harak)730 else if(categoryOnly)950 else 480)){
+                catOffset=(catOffset+step*categoryPage).coerceIn(0,maxOf(0,cats.size-categoryPage))
+            }else offset=(offset+step*count).coerceIn(0,maxOf(0,currentList.size-count))
+            browse(mode,categoryOnly)
         }
         if(items.isEmpty())text("No items in this category",520,380,1000,100,37f)
         if(live){
@@ -562,11 +567,11 @@ class ProviderUi(private val screen:UniverseScreen) {
                 else if(key==19&&i<(if(harak)2 else 1)&&episodeOffset>0){episodeOffset=maxOf(0,episodeOffset-episodePage);nextEpisodeFocus=episodePage-1;renderEpisodes();true}else false}
             }
         }
-        if(PhoneInput.enabled(context)){
-            if(seasonOffset>0)button("Previous seasons",0,1100,400,60){seasonOffset=maxOf(0,seasonOffset-seasonPage);renderEpisodes()}
-            if(seasonOffset+seasonPage<seasons.size)button("More seasons",420,1100,400,60){seasonOffset+=seasonPage;renderEpisodes()}
-            if(episodeOffset>0)button("Previous episodes",0,1180,400,60){episodeOffset=maxOf(0,episodeOffset-episodePage);renderEpisodes()}
-            if(episodeOffset+episodePage<all.size)button("More episodes",420,1180,400,60){episodeOffset+=episodePage;renderEpisodes()}
+        stage!!.swipe={x,y,dx,dy->
+            val step=if(if(kotlin.math.abs(dy)>=kotlin.math.abs(dx))dy<0 else dx<0)1 else -1
+            if(if(harak)y<650 else x<600)seasonOffset=(seasonOffset+step*seasonPage).coerceIn(0,maxOf(0,seasons.size-seasonPage))
+            else episodeOffset=(episodeOffset+step*episodePage).coerceIn(0,maxOf(0,all.size-episodePage))
+            renderEpisodes()
         }
         if(harak){
             rows.forEachIndexed{i,v->
@@ -591,7 +596,6 @@ class ProviderUi(private val screen:UniverseScreen) {
         val item=playback.entry?:return
         if(playback.player==null)return
         full=true;reset()
-        stage!!.phoneReflow=false
         val target=PlayerView(context).apply{useController=false;isFocusable=false}
         stage!!.put(target,0,0,1920,1080);playback.attach(target)
         val parent=selected?.takeIf{it.kind=="series" && item.kind=="episode"}
