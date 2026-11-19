@@ -22,7 +22,7 @@ import javax.crypto.KeyGenerator
 
 /** Opt-in private integration evidence. No provider material exists in source or APK. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk=[28],qualifiers="w1920dp-h1080dp-land-mdpi")
+@Config(sdk=[28],qualifiers="w1920dp-h1080dp-land-television-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class RealProviderTest {
  @Test fun realAccountEncryptedReopenAndNativeScreens(){

@@ -11,7 +11,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk=[28],qualifiers="w1920dp-h1080dp-land-mdpi")
+@Config(sdk=[28],qualifiers="w1920dp-h1080dp-land-television-mdpi")
 class ProviderUiNavigationTest {
  private fun set(p:ProviderUi,name:String,value:Any){ProviderUi::class.java.getDeclaredField(name).apply{isAccessible=true}.set(p,value)}
  private fun get(p:ProviderUi,name:String)=ProviderUi::class.java.getDeclaredField(name).apply{isAccessible=true}.get(p)

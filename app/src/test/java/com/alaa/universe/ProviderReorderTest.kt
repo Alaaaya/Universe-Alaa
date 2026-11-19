@@ -16,7 +16,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.LooperMode
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk=[28],qualifiers="w1920dp-h1080dp-land-mdpi")
+@Config(sdk=[28],qualifiers="w1920dp-h1080dp-land-television-mdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 class ProviderReorderTest {
     private fun snapshot(n:Int=4)=ProviderSnapshot("Fixture",null,
@@ -31,8 +31,8 @@ class ProviderReorderTest {
         try{test(s,p)}finally{c.destroy()}
     }
     private fun buttons(s:UniverseScreen):List<TextView>{val g=s.getChildAt(0) as ViewGroup;return (0 until g.childCount).map{g.getChildAt(it)}.filterIsInstance<TextView>().filter{it.isFocusable}}
-    private fun row(s:UniverseScreen,text:String)=buttons(s).first{it.text.toString().removePrefix("↕ ")==text}
-    private fun names(s:UniverseScreen,prefix:String)=buttons(s).map{it.text.toString().removePrefix("↕ ")}.filter{it.startsWith(prefix)}
+    private fun row(s:UniverseScreen,text:String)=buttons(s).first{it.text.toString().removePrefix("↕ ").substringAfter("  ")==text}
+    private fun names(s:UniverseScreen,prefix:String)=buttons(s).map{it.text.toString().removePrefix("↕ ").substringAfter("  ")}.filter{it.startsWith(prefix)}
     private fun down(s:UniverseScreen,key:Int=23,repeat:Int=0,flags:Int=0)=s.dispatchKeyEvent(KeyEvent(1,2,KeyEvent.ACTION_DOWN,key,repeat,0,0,0,flags))
     private fun up(s:UniverseScreen,key:Int=23,flags:Int=0)=s.dispatchKeyEvent(KeyEvent(1,3,KeyEvent.ACTION_UP,key,0,0,0,0,flags))
     private fun tap(s:UniverseScreen,key:Int=23){down(s,key);up(s,key)}

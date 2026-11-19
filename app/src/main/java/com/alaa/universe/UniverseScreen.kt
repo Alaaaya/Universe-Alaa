@@ -176,7 +176,8 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         val rows=labels.mapIndexed{i,label->button(label,100,230+i*115,1100,100,40f){
             if(i==4)homeTheme="prayer" else {homeTheme="classic";theme=if(i==5)"harak" else listOf("red","gold","blue","royal")[i]}
             context.getSharedPreferences("appearance",0).edit().putString("home",homeTheme).putString("theme",theme).apply();home()
-        }}
+        }}.toMutableList()
+        rows.add(button("Check for updates",1240,230,570,100,32f){(context as? HomeActivity)?.updater?.check()})
         chain(rows);focus(rows[if(homeTheme=="prayer")4 else if(theme=="harak")5 else listOf("red","gold","blue","royal").indexOf(theme).coerceAtLeast(0)])
 
     }

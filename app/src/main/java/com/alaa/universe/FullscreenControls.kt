@@ -16,7 +16,7 @@ class FullscreenControls(
     private val previous:()->Unit, private val next:()->Unit, private val toggleFavorite:()->Boolean,
     artwork:(ImageView)->Unit
 ):FrameLayout(context) {
-    val stage=Stage(context).apply{transparent=true}
+    val stage=Stage(context).apply{transparent=true;phoneReflow=false}
     private val main=Handler(Looper.getMainLooper())
     private val hide=Runnable{conceal()}
     private val tick=object:Runnable{override fun run(){update();main.postDelayed(this,500)}}
@@ -92,9 +92,33 @@ class FullscreenControls(
         progress.nextFocusDownId=pause.id;progress.nextFocusUpId=back.id;back.nextFocusDownId=if(live)pause.id else progress.id
         progress.nextFocusLeftId=progress.id;progress.nextFocusRightId=progress.id
         if(harak)applyHarak(subtitle)
+        if(PhoneInput.enabled(context))phoneControls()
         update()
     }
 
+    private fun phoneControls(){
+        stage.visibility=View.GONE
+        fun dp(n:Int)=(n*resources.displayMetrics.density).toInt()
+        val top=LinearLayout(context).apply{orientation=LinearLayout.HORIZONTAL;setPadding(dp(8),dp(8),dp(8),0);setBackgroundColor(0x99000000.toInt())}
+        fun action(row:LinearLayout,title:String,run:()->Unit){
+            row.addView(Button(context).apply{text=title;textSize=12f;setPadding(0,0,0,0);contentDescription=title;setTextColor(if(harak)Harak.GOLD else Color.WHITE);setOnClickListener{run();show();update()}},LinearLayout.LayoutParams(0,dp(52),1f))
+        }
+        action(top,"Back",leave)
+        top.addView(TextView(context).apply{text=item.name;setTextColor(Color.WHITE);textSize=16f;gravity=Gravity.CENTER_VERTICAL;maxLines=2},LinearLayout.LayoutParams(0,dp(52),3f))
+        addView(top,LayoutParams(-1,-2,Gravity.TOP))
+        val bottom=LinearLayout(context).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(6),dp(6),dp(6),dp(6));setBackgroundColor(0xbb000000.toInt())}
+        fun row()=LinearLayout(context).also{bottom.addView(it)}
+        val playback=row()
+        action(playback,"Previous",previous)
+        action(playback,if(live)"Channels" else "Play / Pause"){if(live)openChannels?.invoke() else session.player?.let{if(it.playWhenReady)it.pause() else it.play()}}
+        action(playback,"Next",next)
+        if(!live){val seek=row();action(seek,"−10 s"){session.player?.seekBack()};action(seek,"+10 s"){session.player?.seekForward()}}
+        val options=row()
+        action(options,"Audio"){session.tracks(C.TRACK_TYPE_AUDIO)}
+        action(options,"Subtitles"){session.tracks(C.TRACK_TYPE_TEXT)}
+        action(options,"Favorite"){isFavorite=toggleFavorite()}
+        addView(bottom,LayoutParams(-1,-2,Gravity.BOTTOM))
+    }
     private fun applyHarak(subtitle:String) {
         val original=(0 until stage.childCount).map{stage.getChildAt(it)}
         original.filterIsInstance<TextView>().forEach{it.typeface=Harak.font(context);it.setTextColor(Harak.FG)}
@@ -168,7 +192,7 @@ class FullscreenControls(
         if(hidden || findFocus()==null)pause.requestFocus()
         return hidden
     }
-    fun initialFocus(){show();pause.requestFocus()}
+    fun initialFocus(){show();if(!PhoneInput.enabled(context))pause.requestFocus()}
     fun update(){
         val p=session.player
         val duration=p?.duration?.takeIf{it>0 && it!=C.TIME_UNSET}?:0L

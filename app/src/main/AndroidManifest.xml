@@ -1,9 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
  <uses-permission android:name="android.permission.INTERNET"/>
- <uses-feature android:name="android.software.leanback" android:required="true"/>
+ <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+ <uses-feature android:name="android.software.leanback" android:required="false"/>
  <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
  <application android:label="universe-Alaa" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false" android:supportsRtl="false" android:usesCleartextTraffic="true">
-  <activity android:name=".HomeActivity" android:screenOrientation="landscape" android:exported="true">
+  <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.updates" android:exported="false" android:grantUriPermissions="true">
+   <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/update_paths"/>
+  </provider>
+  <activity android:name=".HomeActivity" android:configChanges="orientation|screenSize" android:windowSoftInputMode="adjustResize" android:exported="true">
    <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/><category android:name="android.intent.category.LEANBACK_LAUNCHER"/></intent-filter>
   </activity>
  </application>

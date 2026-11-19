@@ -300,6 +300,7 @@ class ProviderUi(private val screen:UniverseScreen) {
             }
         }}
         dialog.show()
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
     }
     private fun confirmRemove(){
         AlertDialog.Builder(context).setTitle("Remove this playlist?")
@@ -414,12 +415,16 @@ class ProviderUi(private val screen:UniverseScreen) {
                 category=c.id;offset=0
                 if(categoryOnly)screen.live() else browse(mode)
                 loadOpenedCategory(c)
-            }.also{v->bindMove(v,true,c.id);v.setOnKeyListener{_,key,event->
+            }.also{v->CategoryIcons.decorate(v);bindMove(v,true,c.id);v.setOnKeyListener{_,key,event->
                 if(event.action!=KeyEvent.ACTION_DOWN)false
                 else if(key==20&&i==categoryPage-1&&catOffset+categoryPage<cats.size){catOffset++;nextCatFocus=categoryPage-1;browse(mode,categoryOnly);true}
                 else if(key==19&&i==0&&catOffset>0){catOffset--;nextCatFocus=0;browse(mode,categoryOnly);true}
                 else false
             }}
+        }
+        if(PhoneInput.enabled(context)){
+            if(catOffset>0)button("Previous categories",0,1060,400,60){catOffset=maxOf(0,catOffset-categoryPage);browse(mode,categoryOnly)}
+            if(catOffset+categoryPage<cats.size)button("More categories",420,1060,400,60){catOffset+=categoryPage;browse(mode,categoryOnly)}
         }
         if(categoryOnly){
             text(snapshot?.name.orEmpty(),1070,410,760,90,46f)
@@ -462,6 +467,10 @@ class ProviderUi(private val screen:UniverseScreen) {
             v.nextFocusRightId=if(live)v.id else cards.getOrNull(i+1)?.id?:v.id
             v.nextFocusUpId=cards.getOrNull(i-(if(live)1 else 5))?.id?:v.id
             v.nextFocusDownId=cards.getOrNull(i+(if(live)1 else 5))?.id?:v.id
+        }
+        if(PhoneInput.enabled(context)){
+            if(offset>0)button("Previous items",0,1140,400,60){offset=maxOf(0,offset-count);browse(mode)}
+            if(offset+count<currentList.size)button("More items",420,1140,400,60){offset+=count;browse(mode)}
         }
         if(items.isEmpty())text("No items in this category",520,380,1000,100,37f)
         if(live){
@@ -553,6 +562,12 @@ class ProviderUi(private val screen:UniverseScreen) {
                 else if(key==19&&i<(if(harak)2 else 1)&&episodeOffset>0){episodeOffset=maxOf(0,episodeOffset-episodePage);nextEpisodeFocus=episodePage-1;renderEpisodes();true}else false}
             }
         }
+        if(PhoneInput.enabled(context)){
+            if(seasonOffset>0)button("Previous seasons",0,1100,400,60){seasonOffset=maxOf(0,seasonOffset-seasonPage);renderEpisodes()}
+            if(seasonOffset+seasonPage<seasons.size)button("More seasons",420,1100,400,60){seasonOffset+=seasonPage;renderEpisodes()}
+            if(episodeOffset>0)button("Previous episodes",0,1180,400,60){episodeOffset=maxOf(0,episodeOffset-episodePage);renderEpisodes()}
+            if(episodeOffset+episodePage<all.size)button("More episodes",420,1180,400,60){episodeOffset+=episodePage;renderEpisodes()}
+        }
         if(harak){
             rows.forEachIndexed{i,v->
                 v.nextFocusLeftId=rows.getOrNull(i-1)?.id?:v.id;v.nextFocusRightId=rows.getOrNull(i+1)?.id?:v.id
@@ -576,6 +591,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         val item=playback.entry?:return
         if(playback.player==null)return
         full=true;reset()
+        stage!!.phoneReflow=false
         val target=PlayerView(context).apply{useController=false;isFocusable=false}
         stage!!.put(target,0,0,1920,1080);playback.attach(target)
         val parent=selected?.takeIf{it.kind=="series" && item.kind=="episode"}
@@ -602,6 +618,16 @@ class ProviderUi(private val screen:UniverseScreen) {
                         .override(96,96).timeout(15000).into(image)
                 }
             })
+        if(PhoneInput.enabled(context)){
+            // Video receives taps even when the overlay has auto-hidden.
+            stage!!.setOnTouchListener{_,event->
+                if(event.actionMasked==MotionEvent.ACTION_UP){controls.reveal();true}else true
+            }
+            target.setOnTouchListener{_,event->
+                if(event.actionMasked==MotionEvent.ACTION_UP)controls.reveal()
+                true
+            }
+        }
         controls.openChannels={openChannelList()}
         fullscreenControls=controls
         stage!!.put(controls,0,0,1920,1080)

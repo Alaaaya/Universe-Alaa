@@ -12,7 +12,7 @@ import org.robolectric.annotation.GraphicsMode
 import org.robolectric.Shadows.shadowOf
 import java.io.File
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk=[28],qualifiers="w1920dp-h1080dp-land-mdpi")
+@Config(sdk=[28],qualifiers="w1920dp-h1080dp-land-television-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PhaseOneTest {
  private fun activity()=Robolectric.buildActivity(HomeActivity::class.java).setup().visible().get().also{it.screen.previewFixtures=true;it.screen.provider.testMode=true;it.screen.fixedClock="19:42";it.screen.home();layout(it)}

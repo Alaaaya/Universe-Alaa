@@ -17,7 +17,7 @@ import java.io.File
 import java.time.Duration
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk=[28],qualifiers="w1920dp-h1080dp-land-mdpi")
+@Config(sdk=[28],qualifiers="w1920dp-h1080dp-land-television-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class FullscreenControlsTest {
  private fun all(v:View):List<View> = listOf(v)+if(v is ViewGroup)(0 until v.childCount).flatMap{all(v.getChildAt(it))} else emptyList()
