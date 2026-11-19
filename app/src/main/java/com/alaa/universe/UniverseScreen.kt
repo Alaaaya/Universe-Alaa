@@ -307,7 +307,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         text(if(arabic)"فيلم من قائمة العرض التجريبية. لم يتم ربط مصدر للمشاهدة." else "An unexpected invitation brings two strangers together.\nA quiet journey becomes a search for home,\nand a chance to begin again.",864,355,930,220,30f).apply{maxLines=5;gravity=Gravity.TOP}
         text("2026    •    Drama    •    1h 48m\nDirector  —\nCast  —",864,600,940,180,28f).apply{maxLines=4;gravity=Gravity.TOP}
         val play=button(if(arabic)"تشغيل" else "Play Movie",864,833,300,77,30f){showFullscreen()}.apply{gravity=Gravity.CENTER}
-        val fav=button(if(arabic)"إضافة للمفضلة" else "Add to Favorites",1190,833,420,77,30f){Toast.makeText(context,"Added to Favorites",Toast.LENGTH_SHORT).show()}.apply{gravity=Gravity.CENTER}
+        val fav=button(if(arabic)"إضافة للمفضلة" else "Add to Favorites",1190,833,420,77,30f){PremiumDialogs.toast(context,"Added to Favorites")}.apply{gravity=Gravity.CENTER}
         play.nextFocusRightId=fav.id;fav.nextFocusLeftId=play.id;focus(play)
     }
     fun seriesDetail() {

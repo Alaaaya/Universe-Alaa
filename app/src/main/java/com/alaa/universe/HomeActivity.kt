@@ -39,7 +39,7 @@ class HomeActivity : Activity() {
         val now = android.os.SystemClock.elapsedRealtime()
         if (now - lastBack < 2000) { finish(); return }
         lastBack = now
-        android.widget.Toast.makeText(this, "اضغط رجوع مرة تانية للخروج", android.widget.Toast.LENGTH_SHORT).show()
+        PremiumDialogs.toast(this, "اضغط رجوع مرة تانية للخروج")
         screen.provider.start()
     }
 }

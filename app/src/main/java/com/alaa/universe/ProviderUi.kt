@@ -75,7 +75,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         val entry=if(target.categoryRow)null else currentList.firstOrNull{it.id==target.id}
         val labels=mutableListOf("نقل")
         if(entry!=null)labels.add(if(identity(entry) in favorites)"احذف من المفضلة" else "أضف إلى المفضلة")
-        val menu=AlertDialog.Builder(context).setItems(labels.toTypedArray()){_,which->
+        val menu=PremiumDialogs.builder(context).setItems(labels.toTypedArray()){_,which->
             clearMoveInput()
             if(scope!=orderScope(target.categoryRow))return@setItems
             if(which==0)beginMove(target)
@@ -258,30 +258,57 @@ class ProviderUi(private val screen:UniverseScreen) {
             }
         }
     }
-    private fun toast(value:String){Toast.makeText(context,value,Toast.LENGTH_LONG).show()}
+    private fun toast(value:String){PremiumDialogs.toast(context,value,true)}
     fun loginDialog(){
         if(busy){toast("Playlist is updating");return}
-        val root=LinearLayout(context).apply{orientation=LinearLayout.VERTICAL;setPadding(32,12,32,12);layoutDirection=View.LAYOUT_DIRECTION_LTR}
-        fun field(hint:String,password:Boolean=false)=EditText(context).apply{
-            this.hint=hint;setSingleLine(true);inputType=if(password)InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD else InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-            importantForAutofill=View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
-            root.addView(this)
+        val root=LinearLayout(context).apply{orientation=LinearLayout.VERTICAL;setPadding(PremiumDialogs.dp(context,24),0,PremiumDialogs.dp(context,24),PremiumDialogs.dp(context,8))}
+        val device=LinearLayout(context).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(12,8,12,8);background=PremiumDialogs.surface(context,0xff1a2433.toInt())}
+        device.addView(PremiumDialogs.text(context,panelSummary(),13f),LinearLayout.LayoutParams(0,-2,1f))
+        device.addView(PremiumDialogs.button(context,"Copy"){(context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Device code",if(testMode)"" else panel.code));toast("Device code copied")})
+        root.addView(device)
+        val tabs=LinearLayout(context).apply{orientation=LinearLayout.HORIZONTAL;setPadding(0,12,0,12)};root.addView(tabs)
+        val xtream=LinearLayout(context).apply{orientation=LinearLayout.VERTICAL}
+        val m3uGroup=LinearLayout(context).apply{orientation=LinearLayout.VERTICAL;visibility=View.GONE}
+        fun field(parent:LinearLayout,label:String,hint:String,password:Boolean=false):EditText {
+            parent.addView(PremiumDialogs.text(context,label,13f))
+            return EditText(context).apply{
+                this.hint=hint;setSingleLine(true);textSize=16f;setTextColor(Color.WHITE);setHintTextColor(0xffadbcd1.toInt())
+                inputType=if(password)InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD else InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+                typeface=android.graphics.Typeface.create("sans-serif",0);textDirection=View.TEXT_DIRECTION_LTR
+                val icon=context.getDrawable(if(password)android.R.drawable.ic_lock_lock else android.R.drawable.ic_menu_edit)?.mutate()?.apply{setTint(PremiumDialogs.accent(context));setBounds(0,0,PremiumDialogs.dp(context,18),PremiumDialogs.dp(context,18))}
+                setCompoundDrawablesRelative(icon,null,null,null);compoundDrawablePadding=PremiumDialogs.dp(context,12)
+                background=PremiumDialogs.focus(context);setPadding(16,8,16,8);minimumHeight=PremiumDialogs.dp(context,48)
+                importantForAutofill=View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+                parent.addView(this,LinearLayout.LayoutParams(-1,PremiumDialogs.dp(context,48)))
+            }
         }
-        root.addView(TextView(context).apply{text=panelSummary();setPadding(0,8,0,16)})
-        val name=field("Playlist name")
-        val server=field("Server URL for Xtream")
-        val username=field("Username")
-        val password=field("Password",true)
-        val m3u=field("Or full M3U URL",true)
-        val http=CheckBox(context).apply{text="Allow insecure HTTP for this playlist (credentials may be exposed)";root.addView(this)}
-        val help=TextView(context).apply{text="Use HTTPS where supported. Enter Xtream details OR an M3U URL. Saved locally with Android Keystore encryption.";root.addView(this)}
-        val scroll=ScrollView(context).apply{addView(root)}
-        val dialog=AlertDialog.Builder(context).setTitle("Connect playlist").setView(scroll).setNegativeButton("Cancel",null)
-            .setNeutralButton("Remove saved playlist"){_,_->confirmRemove()}
+        val name=field(root,"Playlist name","My playlist")
+        root.addView(xtream);root.addView(m3uGroup)
+        val server=field(xtream,"Server address","https://provider.example")
+        val username=field(xtream,"Username","Your username")
+        val password=field(xtream,"Password","Your password",true)
+        val m3u=field(m3uGroup,"M3U playlist URL","https://provider.example/playlist.m3u",true)
+        var useM3u=false
+        lateinit var xTab:Button;lateinit var mTab:Button
+        fun select(m:Boolean){useM3u=m;xtream.visibility=if(m)View.GONE else View.VISIBLE;m3uGroup.visibility=if(m)View.VISIBLE else View.GONE
+            xTab.text=if(m)"Xtream" else "✓  Xtream";mTab.text=if(m)"✓  M3U URL" else "M3U URL"
+            xTab.isSelected=!m;mTab.isSelected=m
+            xTab.setTextColor(if(m)Color.WHITE else 0xff090e17.toInt());mTab.setTextColor(if(m)0xff090e17.toInt() else Color.WHITE)
+            xTab.background=PremiumDialogs.focus(context,!m);mTab.background=PremiumDialogs.focus(context,m)
+        }
+        xTab=PremiumDialogs.button(context,"✓  Xtream",true){select(false)}
+        mTab=PremiumDialogs.button(context,"M3U URL"){select(true)}
+        tabs.addView(xTab,LinearLayout.LayoutParams(0,PremiumDialogs.dp(context,48),1f).apply{marginEnd=8})
+        tabs.addView(mTab,LinearLayout.LayoutParams(0,PremiumDialogs.dp(context,48),1f))
+        val http=CheckBox(context).apply{text="Allow insecure HTTP (credentials may be exposed)";textSize=12f;buttonTintList=android.content.res.ColorStateList.valueOf(PremiumDialogs.accent(context));root.addView(this)}
+        val help=PremiumDialogs.text(context,"Use HTTPS where supported. Credentials stay encrypted on this device.",12f);root.addView(help)
+        root.addView(PremiumDialogs.button(context,"Remove saved playlist",danger=true){confirmRemove()})
+        val scroll=ScrollView(context).apply{isFillViewport=false;addView(root)}
+        val dialog=PremiumDialogs.builder(context).setTitle("Connect playlist").setView(scroll).setNegativeButton("Cancel",null)
             .setPositiveButton("Connect",null).create()
-        dialog.setOnShowListener{dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener{
+        dialog.setOnShowListener{PremiumDialogs.style(dialog);dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener{
             if(busy)return@setOnClickListener
-            val login=ProviderLogin(name.text.toString().trim().ifBlank{runCatching{java.net.URI(if(m3u.text.isNotBlank())m3u.text.toString().trim() else server.text.toString().trim()).host}.getOrNull()?:"Playlist"},server.text.toString().trim(),username.text.toString().trim(),password.text.toString(),m3u.text.toString().trim(),http.isChecked)
+            val login=ProviderLogin(name.text.toString().trim().ifBlank{runCatching{java.net.URI(if(useM3u)m3u.text.toString().trim() else server.text.toString().trim()).host}.getOrNull()?:"Playlist"},if(useM3u)"" else server.text.toString().trim(),if(useM3u)"" else username.text.toString().trim(),if(useM3u)"" else password.text.toString(),if(useM3u)m3u.text.toString().trim() else "",http.isChecked)
             if(panelSelected){playback.stop();panelSelected=false;generation++;detailGeneration++;snapshot=null}
             busy=true;help.text="Connecting…";dialog.getButton(-1).isEnabled=false
             val token=generation
@@ -303,7 +330,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
     }
     private fun confirmRemove(){
-        AlertDialog.Builder(context).setTitle("Remove this playlist?")
+        PremiumDialogs.builder(context).setTitle("Remove this playlist?")
             .setMessage("This deletes saved credentials and private cached lists from this device. You will need to enter the login again.")
             .setNegativeButton("Cancel",null).setPositiveButton("Remove"){_,_->
                 generation++;playback.stop();snapshot=null;favorites.clear();recents.clear();saveState()
@@ -503,7 +530,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         selected?.let{playChecked(it);recents.add(identity(it));saveState()}
         if(full){
             fullscreen()
-            if(keepControlsHidden){fullscreenControls?.conceal();selected?.let{Toast.makeText(context,it.name,Toast.LENGTH_SHORT).show()}}
+            if(keepControlsHidden){fullscreenControls?.conceal();selected?.let{PremiumDialogs.toast(context,it.name)}}
         } else browse("live")
     }
     fun detail(series:Boolean){

@@ -82,8 +82,8 @@ class PlaybackSession(private val context:Context, private val repositoryProvide
         }
         return false
     }
-    fun trackMenu(){AlertDialog.Builder(context).setTitle("Playback options").setItems(arrayOf("Audio","Subtitles","Aspect ratio")){_,i->
-        when(i){0->tracks(C.TRACK_TYPE_AUDIO);1->tracks(C.TRACK_TYPE_TEXT);else->AlertDialog.Builder(context).setTitle("Aspect ratio").setItems(arrayOf("Fit","Fill","Zoom")){_,n->
+    fun trackMenu(){PremiumDialogs.builder(context).setTitle("Playback options").setItems(arrayOf("Audio","Subtitles","Aspect ratio")){_,i->
+        when(i){0->tracks(C.TRACK_TYPE_AUDIO);1->tracks(C.TRACK_TYPE_TEXT);else->PremiumDialogs.builder(context).setTitle("Aspect ratio").setItems(arrayOf("Fit","Fill","Zoom")){_,n->
             view?.resizeMode=when(n){1->androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL;2->androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM;else->androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT}
         }.show()}
     }.show()}
@@ -96,7 +96,7 @@ class PlaybackSession(private val context:Context, private val repositoryProvide
             val f=g.getTrackFormat(i);labels.add(listOfNotNull(f.label,f.language?.takeIf{it!="und"},if(type==C.TRACK_TYPE_VIDEO&&f.height>0)"${f.height}p" else null).distinct().joinToString(" · ").ifBlank{"Track ${n+1}"})
         }
         if(options.isEmpty())labels.add("No supported embedded tracks")
-        AlertDialog.Builder(context).setTitle(if(type==C.TRACK_TYPE_TEXT)"Subtitles" else if(type==C.TRACK_TYPE_VIDEO)"Quality" else "Audio")
+        PremiumDialogs.builder(context).setTitle(if(type==C.TRACK_TYPE_TEXT)"Subtitles" else if(type==C.TRACK_TYPE_VIDEO)"Quality" else "Audio")
             .setItems(labels.toTypedArray()){_,i->
                 if(i==0)p.trackSelectionParameters=p.trackSelectionParameters.buildUpon().clearOverridesOfType(type).setTrackTypeDisabled(type,type==C.TRACK_TYPE_TEXT).build()
                 else options.getOrNull(i-1)?.let{(g,n)->p.trackSelectionParameters=p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(type,false).setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup,n)).build()}

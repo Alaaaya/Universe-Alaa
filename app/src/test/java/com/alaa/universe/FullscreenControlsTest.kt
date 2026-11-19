@@ -114,7 +114,7 @@ class FullscreenControlsTest {
   press(KeyEvent.KEYCODE_DPAD_DOWN)
   assertEquals("3",p.playback.entry?.id)
   assertEquals(View.INVISIBLE,overlay().visibility)
-  assertEquals("Three",org.robolectric.shadows.ShadowToast.getTextOfLatestToast())
+  assertEquals("Three",(org.robolectric.shadows.ShadowToast.getLatestToast().view as android.widget.TextView).text.toString())
   press(KeyEvent.KEYCODE_DPAD_DOWN)
   assertEquals("1",p.playback.entry?.id) // wrap
   press(KeyEvent.KEYCODE_DPAD_UP)

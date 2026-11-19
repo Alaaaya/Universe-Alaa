@@ -2,10 +2,10 @@ plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
 android {
  namespace = "com.alaa.universe"
  compileSdk = 36
- defaultConfig { applicationId = "com.alaa.universe"; minSdk = 23; targetSdk = 36; versionCode = 11; versionName = "0.4.7" }
+ defaultConfig { applicationId = "com.alaa.universe"; minSdk = 23; targetSdk = 36; versionCode = 12; versionName = "0.4.8" }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  kotlinOptions { jvmTarget = "17" }
- testOptions { unitTests.isIncludeAndroidResources = true; unitTests.all { it.maxHeapSize = "1500m"; it.systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2") } }
+ testOptions { unitTests.isIncludeAndroidResources = true; unitTests.all { it.maxHeapSize = "512m"; it.systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2") } }
 }
 dependencies {
  implementation("com.github.bumptech.glide:glide:4.16.0")
