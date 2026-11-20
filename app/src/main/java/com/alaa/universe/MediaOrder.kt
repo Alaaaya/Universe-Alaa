@@ -6,8 +6,14 @@ import java.security.MessageDigest
 
 /** Only opaque IDs and hashed scopes are stored, never provider logins or URLs. */
 internal class MediaOrder(private val prefs: SharedPreferences) {
-    private fun key(scope: List<String>) = MessageDigest.getInstance("SHA-256")
-        .digest(JSONArray(scope).toString().toByteArray()).joinToString("") { "%02x".format(it) }
+    private val keys=object:LinkedHashMap<List<String>,String>(16,0.75f,true){
+        override fun removeEldestEntry(eldest:MutableMap.MutableEntry<List<String>,String>?)=size>64
+    }
+    @Synchronized private fun key(scope: List<String>):String = keys.getOrPut(scope.toList()) {
+        val hex="0123456789abcdef"
+        MessageDigest.getInstance("SHA-256").digest(JSONArray(scope).toString().toByteArray())
+            .joinToString("") { byte -> val n=byte.toInt() and 255; "${hex[n ushr 4]}${hex[n and 15]}" }
+    }
     private fun saved(scope: List<String>): List<String> = runCatching {
         val array = JSONArray(prefs.getString(key(scope), "[]"))
         (0 until array.length()).map { array.getString(it) }.distinct()

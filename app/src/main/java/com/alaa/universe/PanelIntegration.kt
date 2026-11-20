@@ -120,6 +120,7 @@ internal class PanelIntegration(
     /** Main thread every second, and before any play/reopen. Never waits on panel networking. */
     fun tick():Boolean {
         synchronized(lock) {
+            if(loading && repository.progress!="Ready")status=repository.progress
             if(ownsProvider && !valid()) { deny("cache_expired");return false }
             return ownsProvider
         }

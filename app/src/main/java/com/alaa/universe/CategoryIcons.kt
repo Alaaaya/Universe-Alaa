@@ -102,7 +102,11 @@ object CategoryIcons {
         "🇿🇦" to "za;zaf;south africa;جنوب افريقيا",
         "🇨🇳" to "cn;chn;china;chinese;الصين"
     )
-    fun classify(raw:String):Icon {
+    private val cache=object:LinkedHashMap<String,Icon>(64,0.75f,true){
+        override fun removeEldestEntry(eldest:MutableMap.MutableEntry<String,Icon>?)=size>512
+    }
+    @Synchronized fun classify(raw:String):Icon = cache.getOrPut(raw){classifyUncached(raw)}
+    private fun classifyUncached(raw:String):Icon {
         val n=normalized(raw)
         brands.firstOrNull{has(n,it.second)}?.let{return Icon(it.first,"brand")}
         countries.firstOrNull{has(n,it.second)}?.let{return Icon(it.first,"country")}

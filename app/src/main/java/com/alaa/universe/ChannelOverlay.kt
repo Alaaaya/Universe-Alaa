@@ -19,7 +19,7 @@ class ChannelOverlay(context:Context,private val channels:List<MediaEntry>,playi
         Harak.label(stage,"القنوات",120,24,480,72,32f)
         val start=(at-4).coerceIn(0,(channels.size-9).coerceAtLeast(0))
         stage.swipe={_,_,_,dy->at=(at+if(dy<0)9 else -9).coerceIn(0,channels.lastIndex.coerceAtLeast(0));render()}
-        channels.drop(start).take(9).forEachIndexed{i,e->
+        BrowseIndex.page(channels,start,9).forEachIndexed{i,e->
             val row=Harak.button(stage,e.name,28,126+i*98,602,86,26f){choose(e)}
             row.contentDescription="Channel ${e.name}"
             if(i+start==at){row.background=Harak.box(focus=true);row.requestFocus();back.nextFocusDownId=row.id;row.nextFocusUpId=back.id}

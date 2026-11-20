@@ -91,7 +91,7 @@ object Harak {
             };b.contentDescription=t
             icon(s,tileIcons[i],x+20,598,42,42)
             label(s,t,x+78,591,151,50,21f)
-            val count=when(i){0->entries.count{it.kind=="live"}.toString();1->entries.count{it.kind=="movie"}.toString();2->entries.count{it.kind=="series"}.toString();else->""}
+            val count=when(i){0->screen.provider.homeCount("live").toString();1->screen.provider.homeCount("movie").toString();2->screen.provider.homeCount("series").toString();else->""}
             label(s,if(count.isBlank())"" else count+" "+listOf("قناة محمّلة","فيلم","مسلسل")[i],x+80,642,140,32,17f,false,MUTED);b
         }
         s.put(View(s.context).apply{setBackgroundColor(GOLD)},348,748,4,32)

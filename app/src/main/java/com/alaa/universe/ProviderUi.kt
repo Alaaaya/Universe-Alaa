@@ -15,11 +15,73 @@ class ProviderUi(private val screen:UniverseScreen) {
     private val context=screen.context
     private val manualRepository=ProviderRepository(context)
     private val panelRepository=ProviderRepository(CredentialVault.named(context,"panel-provider-v2"))
+    private var manualOverride=false
     private var panelSelected=false
     val repository get()=if(panelSelected)panelRepository else manualRepository
-    var snapshot:ProviderSnapshot?=null; private set
+    var snapshot:ProviderSnapshot?=null
+        private set(value) { field=value; invalidateBrowseIndex() }
     private val worker=Executors.newSingleThreadExecutor()
     private val main=Handler(Looper.getMainLooper())
+    private var browseIndex:BrowseIndex?=null
+    private var indexedSnapshot:ProviderSnapshot?=null
+    private var indexedRepository:ProviderRepository?=null
+    private var indexedRevision=-1L
+    private var indexPending=false
+    private var indexSerial=0
+    private var stateRevision=0L
+    private var orderRevision=0L
+    private var moveAvailable=emptyList<String>()
+    private data class ListKey(val kind:String,val category:String,val state:Long,val order:Long,val draft:List<String>?)
+    private val browseLists=object:LinkedHashMap<ListKey,List<MediaEntry>>(8,0.75f,true){
+        override fun removeEldestEntry(eldest:MutableMap.MutableEntry<ListKey,List<MediaEntry>>?)=size>8
+    }
+    private val pendingLists=mutableSetOf<ListKey>()
+    private fun invalidateBrowseIndex(){
+        indexSerial++;indexPending=false;browseIndex=null;indexedSnapshot=null;indexedRepository=null
+        browseLists.clear();pendingLists.clear();currentList=emptyList()
+    }
+    private fun indexReady():Boolean = indexedSnapshot===snapshot && indexedRepository===repository &&
+        indexedRevision==(if(testMode)0L else repository.visibilityRevision) && browseIndex!=null
+    private fun ensureBrowseIndex():Boolean {
+        if(indexReady())return true
+        if(indexPending)return false
+        browseLists.clear();pendingLists.clear();currentList=emptyList()
+        val source=snapshot?:return false
+        val target=repository
+        val serial=++indexSerial
+        indexPending=true
+        val work={
+            val visibility=if(testMode)null else target.visibility()
+            val built=BrowseIndex(source,{visibility?.allows(it)!=false},
+                {visibility?.policy?.allows(it.kind,listOf(it.id))!=false})
+            Triple(built,visibility?.revision?:0L,serial)
+        }
+        val install:(Triple<BrowseIndex,Long,Int>)->Unit={ (built,revision,ticket)->
+            if(ticket==indexSerial){
+                indexPending=false
+                if(!closed && snapshot===source && repository===target && (testMode||target.visibilityRevision==revision)){
+                    browseIndex=built;indexedSnapshot=source;indexedRepository=target;indexedRevision=revision
+                    browseLists.clear();pendingLists.clear()
+                    if(moving!=null && !movingCategories)moveAvailable=built.select(mode,category,
+                        if(category=="favorites")favorites.toSet() else emptySet(),recents.toSet()).map{it.id}
+                    if(!testMode)redrawBrowsePage()
+                }else if(!closed)ensureBrowseIndex()
+            }
+        }
+        if(testMode)install(work()) else worker.execute{
+            val result=runCatching{work()}
+            main.post{result.onSuccess(install).onFailure{if(serial==indexSerial){indexPending=false;toast("Catalogue unavailable. Please retry.")}}}
+        }
+        return indexReady()
+    }
+    private fun redrawBrowsePage(){
+        if(full)return
+        when(screen.page){
+            "home"->screen.home()
+            "categories"->browse("live",true)
+            "live","movies","series","catalogue"->browse(mode,categoryOnlyView)
+        }
+    }
     private var closed=false
     private var busy=false
     private var generation=0
@@ -61,7 +123,11 @@ class ProviderUi(private val screen:UniverseScreen) {
         return ids.mapNotNull{byId[it]}
     }
     private fun allCategories()=ordered(listOf(MediaCategory("","All",mode),MediaCategory("favorites","Favorites",mode),MediaCategory("recent","Recently viewed",mode))+kindCategories(),true){it.id}
-    private fun moveIds(categories:Boolean)=if(categories)allCategories().map{it.id} else entries().map{it.id}
+    private fun moveIds(categories:Boolean):List<String> {
+        val move=moving
+        return if(move!=null && !categories && !movingCategories)move.ids(moveAvailable)
+            else if(categories)allCategories().map{it.id} else entries().map{it.id}
+    }
     private fun bindMove(view:View,categories:Boolean,id:String) {
         val target=MoveTarget(categories,id);moveRows[view]=target
         view.setOnLongClickListener{longStarted=true;showItemMenu(target);true}
@@ -98,7 +164,8 @@ class ProviderUi(private val screen:UniverseScreen) {
     private fun beginMove(target:MoveTarget){
         if(moving!=null)return
         movingCategories=target.categoryRow
-        moving=MediaMove(orderScope(target.categoryRow),target.id,moveIds(target.categoryRow))
+        moveAvailable=moveIds(target.categoryRow)
+        moving=MediaMove(orderScope(target.categoryRow),target.id,moveAvailable)
         renderMove()
     }
     private fun renderMove(){
@@ -119,6 +186,7 @@ class ProviderUi(private val screen:UniverseScreen) {
             toast("Could not save order. Try again.");return
         }
         moving=null
+        orderRevision++;browseLists.clear()
         val at=moveIds(categories).indexOf(focusId)
         if(categories && at>=0){catOffset=catOffset.coerceIn(maxOf(0,at-9),at);nextCatFocus=at-catOffset}
         else if(at>=0){offset=offset.coerceIn(maxOf(0,at-11),at);nextCardFocus=at-offset}
@@ -143,9 +211,15 @@ class ProviderUi(private val screen:UniverseScreen) {
     private var favoriteScope=""
     private var favoriteSnapshot:ProviderSnapshot?=null
     private var favoriteIds=mutableSetOf<String>()
+    private var favoriteKeyScope:List<String>?=null
+    private var favoriteKeyValue=""
     private fun favoriteKey():String {
-        val bytes=java.security.MessageDigest.getInstance("SHA-256").digest(org.json.JSONArray(orderScope(false).take(2)).toString().toByteArray())
-        return "favorites-"+bytes.joinToString(""){"%02x".format(it)}
+        val scope=orderScope(false).take(2)
+        if(scope==favoriteKeyScope)return favoriteKeyValue
+        val bytes=java.security.MessageDigest.getInstance("SHA-256").digest(org.json.JSONArray(scope).toString().toByteArray())
+        favoriteKeyScope=scope
+        favoriteKeyValue="favorites-"+bytes.joinToString(""){"%02x".format(it)}
+        return favoriteKeyValue
     }
     private val favorites:MutableSet<String> get(){
         val key=favoriteKey()
@@ -180,6 +254,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         }}
     ) }
     private fun handlePanelChange(value:ProviderSnapshot?){
+            if(manualOverride)return
             run{
                 val selectedNow=panel.ownsProvider
                 if(selectedNow || panelSelected){
@@ -217,7 +292,7 @@ class ProviderUi(private val screen:UniverseScreen) {
     var testMode=false
     private fun loadSet(key:String)=context.getSharedPreferences("media-state",0).getStringSet(key,emptySet())!!.toMutableSet()
     private fun identity(e:MediaEntry)=e.kind+":"+e.id
-    private fun saveState(){context.getSharedPreferences("media-state",0).edit().putStringSet(favoriteKey(),favorites.toSet()).putStringSet("recent",recents).apply()}
+    private fun saveState(){stateRevision++;browseLists.keys.removeAll{it.category=="favorites"||it.category=="recent"};context.getSharedPreferences("media-state",0).edit().putStringSet(favoriteKey(),favorites.toSet()).putStringSet("recent",recents).apply()}
     fun start(){
         if(testMode||closed)return
         foreground=true
@@ -309,16 +384,31 @@ class ProviderUi(private val screen:UniverseScreen) {
         val scroll=ScrollView(context).apply{isFillViewport=false;addView(root)}
         val dialog=PremiumDialogs.builder(context).setTitle("Connect playlist").setView(scroll).setNegativeButton("Cancel",null)
             .setPositiveButton("Connect",null).create()
+        var connecting=false
         dialog.setOnShowListener{PremiumDialogs.style(dialog);dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener{
-            if(busy)return@setOnClickListener
+            if(connecting)return@setOnClickListener
+            connecting=true
             val login=ProviderLogin(name.text.toString().trim().ifBlank{runCatching{java.net.URI(if(useM3u)m3u.text.toString().trim() else server.text.toString().trim()).host}.getOrNull()?:"Playlist"},if(useM3u)"" else server.text.toString().trim(),if(useM3u)"" else username.text.toString().trim(),if(useM3u)"" else password.text.toString(),if(useM3u)m3u.text.toString().trim() else "",http.isChecked)
+            manualOverride=true
             if(panelSelected){playback.stop();panelSelected=false;generation++;detailGeneration++;snapshot=null}
             busy=true;help.text="Connecting…";dialog.getButton(-1).isEnabled=false
+            val target=repository
+            val started=android.os.SystemClock.elapsedRealtime()
+            val progressTick=object:Runnable {
+                override fun run() {
+                    if(!connecting || !dialog.isShowing)return
+                    val seconds=(android.os.SystemClock.elapsedRealtime()-started)/1000
+                    help.text=target.progress+" · "+seconds+"s"
+                    if(seconds>=95){target.cancelConnect();generation++;connecting=false;busy=false;help.text="Connection timed out. Please retry.";dialog.getButton(-1).isEnabled=true;return}
+                    main.postDelayed(this,500)
+                }
+            }
+            main.post(progressTick)
             val token=generation
-            worker.execute{
-                val result=runCatching{repository.connect(login)}
+            Thread({
+                val result=runCatching{target.connect(login)}
                 main.post{
-                    busy=false
+                    connecting=false;busy=false
                     if(!closed&&generation==token){
                         result.onSuccess{
                             snapshot=it;imageHttpAllowed=login.allowHttp;recents.clear();saveState()
@@ -327,9 +417,11 @@ class ProviderUi(private val screen:UniverseScreen) {
                         result.onFailure{help.text=it.message ?: "Connection failed.";dialog.getButton(-1).isEnabled=true}
                     }
                 }
-            }
+            },"playlist-connect").start()
         }}
+        dialog.setOnCancelListener{repository.cancelConnect();busy=false;generation++}
         dialog.show()
+        dialog.getButton(-2)?.setOnClickListener{repository.cancelConnect();busy=false;generation++;dialog.dismiss()}
         dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
     }
     private fun confirmRemove(){
@@ -365,7 +457,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         val uri=runCatching{ProviderRepository.validatedUrl(e.icon,imageHttpAllowed)}.getOrNull()?:return
         val image=ImageView(context).apply{scaleType=ImageView.ScaleType.FIT_CENTER;isFocusable=false}
         stage!!.put(image,x,y,w,h);pictures.add(image)
-        com.bumptech.glide.Glide.with(context).asBitmap().load(uri.toASCIIString()).diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.NONE).skipMemoryCache(true).override(w,h).timeout(15000).into(image)
+        com.bumptech.glide.Glide.with(context).asBitmap().load(uri.toASCIIString()).diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.RESOURCE).skipMemoryCache(false).override(w,h).timeout(15000).into(image)
     }
     private fun button(s:String,x:Int,y:Int,w:Int,h:Int,action:()->Unit):TextView=
         text(s,x,y,w,h).apply{
@@ -381,7 +473,8 @@ class ProviderUi(private val screen:UniverseScreen) {
         text("universe-Alaa",120,30,550,75,42f).setTextColor(accent)
         text(title,800,30,1072,75,43f)
     }
-    fun homeEntries()=snapshot?.entries.orEmpty().filter{testMode||repository.isVisible(it)}
+    fun homeEntries():List<MediaEntry> = if(ensureBrowseIndex())browseIndex!!.home else emptyList()
+    fun homeCount(kind:String):Int = if(ensureBrowseIndex())browseIndex!!.count(kind) else 0
     fun openSaved(saved:String) {
         if(!requireConnection())return
         mode="live";category=saved;offset=0;catOffset=0;screen.live()
@@ -403,14 +496,49 @@ class ProviderUi(private val screen:UniverseScreen) {
                 image.removeOnAttachStateChangeListener(this)
             }
         })
-        com.bumptech.glide.Glide.with(context).asBitmap().load(uri.toASCIIString())
-            .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.NONE).skipMemoryCache(true)
-            .override(400,500).timeout(15000).into(image)
+        val request={
+            if(image.isAttachedToWindow && (testMode||repository.isVisible(e)))
+                com.bumptech.glide.Glide.with(context).asBitmap().load(uri.toASCIIString())
+                    .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.RESOURCE).skipMemoryCache(false)
+                    .override(236,350).timeout(15000).into(image)
+        }
+        if(image.isAttachedToWindow)request() else image.addOnAttachStateChangeListener(object:View.OnAttachStateChangeListener{
+            override fun onViewAttachedToWindow(v:View){image.removeOnAttachStateChangeListener(this);request()}
+            override fun onViewDetachedFromWindow(v:View){}
+        })
     }
-    private fun kindCategories()=snapshot?.categories.orEmpty().filter{it.kind==mode}
+    private fun kindCategories()=if(ensureBrowseIndex())browseIndex!!.categories[mode].orEmpty() else emptyList()
+    private fun listKey()=ListKey(mode,category,if(category=="favorites"||category=="recent")stateRevision else 0L,orderRevision,moving?.takeIf{it.scope==orderScope(false)}?.draft)
     private fun entries():List<MediaEntry> {
-        val favoriteEntries=if(category=="favorites")favorites else emptySet<String>()
-        return ordered(snapshot?.entries.orEmpty().filter{it.kind==mode&&(testMode||repository.isVisible(it))&&when(category){"favorites"->identity(it) in favoriteEntries;"recent"->identity(it) in recents;""->true;else->it.categoryId==category}},false){it.id}
+        if(!ensureBrowseIndex())return emptyList()
+        val index=browseIndex!!
+        val key=listKey()
+        browseLists[key]?.let{return it}
+        if(!pendingLists.add(key))return emptyList()
+        val scope=orderScope(false)
+        val fav=if(category=="favorites")favorites.toSet() else emptySet()
+        val recent=if(category=="recent")recents.toSet() else emptySet()
+        val serial=indexSerial
+        val work={
+            val values=index.select(key.kind,key.category,fav,recent)
+            val available=values.map{it.id}
+            val ids=key.draft?.let{MediaOrder.merge(it,available)}?:mediaOrder.ids(scope,available)
+            BrowseIndex.ordered(values,ids)
+        }
+        val install:(List<MediaEntry>)->Unit={list->
+            if(serial==indexSerial){
+                pendingLists.remove(key)
+                if(indexReady()){
+                    browseLists[key]=list
+                    if(!testMode && key==listKey())redrawBrowsePage()
+                }
+            }
+        }
+        if(testMode)install(work()) else worker.execute{
+            val result=runCatching{work()}
+            main.post{result.onSuccess(install).onFailure{if(serial==indexSerial)pendingLists.remove(key)}}
+        }
+        return browseLists[key].orEmpty()
     }
     fun categories(){
         playback.stop();full=false;mode="live";category="";offset=0;catOffset=0
@@ -440,7 +568,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         val cats=allCategories()
         val categoryPage=if(harak)8 else 10
         catOffset=catOffset.coerceIn(0,maxOf(0,cats.size-categoryPage))
-        val catRows=cats.drop(catOffset).take(categoryPage).mapIndexed{i,c->
+        val catRows=BrowseIndex.page(cats,catOffset,categoryPage).mapIndexed{i,c->
             button(if(harak)when(c.id){""->"الكل";"favorites"->"المفضلة";"recent"->"المشاهدة الأخيرة";else->c.name}else c.name,if(harak)348 else 30,if(harak)160+i*98 else 160+i*76,if(harak)360 else if(categoryOnly)900 else 430,if(harak)86 else 70){
                 category=c.id;offset=0
                 if(categoryOnly)screen.live() else browse(mode)
@@ -463,9 +591,9 @@ class ProviderUi(private val screen:UniverseScreen) {
             text("Hold OK for category options",1070,620,760,65)
             focus(catRows.getOrNull(nextCatFocus?:0));nextCatFocus=null;return
         }
-        currentList=entries();offset=offset.coerceIn(0,maxOf(0,currentList.size-1))
+        currentList=entries();if(currentList.isNotEmpty())offset=offset.coerceIn(0,currentList.size-1)
         val live=kind=="live";val count=if(live){if(harak)8 else 12} else 10
-        val items=currentList.drop(offset).take(count)
+        val items=BrowseIndex.page(currentList,offset,count)
         val cards=items.mapIndexed{i,e->
             val x=if(harak){if(live)738 else 738+(i%5)*231}else if(live)490 else 500+(i%5)*274
             val y=if(harak){if(live)160+i*100 else 160+(i/5)*344}else if(live)160+i*66 else 160+(i/5)*390
@@ -507,7 +635,7 @@ class ProviderUi(private val screen:UniverseScreen) {
             }else offset=(offset+step*count).coerceIn(0,maxOf(0,currentList.size-count))
             browse(mode,categoryOnly)
         }
-        if(items.isEmpty())text("No items in this category",520,380,1000,100,37f)
+        if(items.isEmpty())text(if(!indexReady()||listKey() in pendingLists)"Loading…" else "No items in this category",520,380,1000,100,37f)
         if(live){
             val target=PlayerView(context).apply{useController=false;isFocusable=false}
             stage!!.put(target,if(harak)1288 else 990,160,if(harak)588 else 882,if(harak)331 else 496);playback.attach(target)
@@ -523,10 +651,11 @@ class ProviderUi(private val screen:UniverseScreen) {
             open.nextFocusDownId=fav.id
         }
         text(if(moving!=null)"↑ ↓ Move   OK Save   BACK Cancel" else "${if(currentList.isEmpty())0 else offset+1}–${offset+items.size} / ${currentList.size}   Hold OK for options   BACK Home",if(harak)738 else 490,1015,if(harak)1138 else 1380,45,24f)
-        focus(if(nextCatFocus!=null)catRows.getOrNull(nextCatFocus!!) else cards.getOrNull((nextCardFocus?:0).coerceAtMost(cards.lastIndex.coerceAtLeast(0)))?:catRows.firstOrNull());nextCatFocus=null;nextCardFocus=null
+        focus(if(nextCatFocus!=null)catRows.getOrNull(nextCatFocus!!) else cards.getOrNull((nextCardFocus?:0).coerceAtMost(cards.lastIndex.coerceAtLeast(0)))?:catRows.firstOrNull());nextCatFocus=null;if(cards.isNotEmpty())nextCardFocus=null
     }
     private fun zap(delta:Int, keepControlsHidden:Boolean=false){
-        val list=(if(currentList.isEmpty())snapshot?.entries.orEmpty() else currentList).filter{it.kind=="live" && repository.isVisible(it)}
+        if(!ensureBrowseIndex())return
+        val list=if(currentList.isEmpty())browseIndex!!.select("live","",emptySet(),emptySet()) else currentList
         if(list.isEmpty())return
         val at=list.indexOfFirst{it.id==playback.entry?.id}
         selected=list[Math.floorMod(at+delta,list.size)]
@@ -648,7 +777,7 @@ class ProviderUi(private val screen:UniverseScreen) {
                 if(uri!=null && (testMode || repository.isVisible(item))){
                     pictures.add(image)
                     com.bumptech.glide.Glide.with(context).asBitmap().load(uri.toASCIIString())
-                        .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.NONE).skipMemoryCache(true)
+                        .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.RESOURCE).skipMemoryCache(false)
                         .override(96,96).timeout(15000).into(image)
                 }
             })
@@ -671,8 +800,8 @@ class ProviderUi(private val screen:UniverseScreen) {
     }
     private fun openChannelList(){
         if(playback.entry?.kind!="live"||channelOverlay!=null)return
-        val channels=(if(currentList.isEmpty())snapshot?.entries.orEmpty() else currentList)
-            .filter{it.kind=="live"&&(testMode||repository.isVisible(it))}
+        if(!ensureBrowseIndex())return
+        val channels=if(currentList.isEmpty())browseIndex!!.select("live","",emptySet(),emptySet()) else currentList
         if(channels.isEmpty())return
         fullscreenControls?.conceal()
         val overlay=ChannelOverlay(context,channels,playback.entry?.id.orEmpty(),accent,{entry->

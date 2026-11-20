@@ -1,0 +1,11 @@
+# Live browsing 0.4.11
+
+Same TV scene, category-first entry and 12 classic Live rows (8 Harak rows) preserved. The old implementation already rendered a page, not 9,175 views. Its expensive part was repeatedly filtering the entire catalogue, synchronizing repository visibility once per item, building ordering maps and merging saved IDs on every redraw. `drop(offset)` also copied the remaining catalogue at deep page offsets. Category icon matching repeatedly normalized every alias using regex even for identical labels.
+
+The new immutable BrowseIndex captures policy and ownership once on the repository worker, groups by kind and primary category once, and exposes precomputed counts and six home recommendations. Ordered lists are prepared off-main and retained in an eight-entry LRU. Pagination uses bounded subList windows. Snapshot, repository identity and visibility epoch must match before a cached list can be used. Policy changes, membership changes and clearing invalidate the epoch; playback and artwork keep individual visibility checks. Favorites/recents and saved/draft order changes invalidate corresponding derived lists. Loading does not block the main thread. Category icon classification and order-scope hashes have bounded caches.
+
+Glide now reuses downsampled resource/memory images instead of explicitly disabling both caches. Only rendered page images are requested; home images wait for attachment and decode to at most 236x350. Parsed provider catalogue remains in the existing encrypted cache.
+
+Regression coverage includes 9,175-item page windows, no repeat visibility scan across repeated indexed selections, exact saved order, kind-scoped favorites/recents, snapshot replacement, policy epochs and multi-category hides, category-first empty channel list, existing reorder/navigation/hidden-category tests, and the profiler's frozen public M3U fixture. Test-only synchronous execution remains for legacy deterministic UI fixture tests; production uses the executor.
+
+Native low-memory CPU/frame before-after measurements are owned by the separate profiler. No measured performance improvement, on-device smoothness, or publication is claimed until its report exists. APK is for verification only and must not be added to the updater yet.

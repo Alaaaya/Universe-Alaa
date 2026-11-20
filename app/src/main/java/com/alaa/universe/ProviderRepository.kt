@@ -40,6 +40,20 @@ private fun entryFromJson(j: JSONObject) = MediaEntry(j.getString("id"), j.getSt
 class ProviderRepository internal constructor(private val vault: CredentialVault, private val testFetch: ((String) -> String)? = null) {
     constructor(context: Context) : this(CredentialVault(context.applicationContext))
     private val stateLock = Any()
+    @Volatile internal var progress:String="Ready"; private set
+    @Volatile private var operationDeadline=Long.MAX_VALUE
+    internal fun cancelConnect() { operationDeadline=0L }
+    private fun checkDeadline() { if(System.nanoTime()>operationDeadline) throw ProviderFailure("Connection timed out after 90 seconds. Please retry.") }
+
+    // UI indexes are valid only for this exact visibility epoch. Changes invalidate before IO.
+    @Volatile internal var visibilityRevision = 0L; private set
+    internal data class Visibility(val revision: Long, val policy: CategoryPolicy?, val memberships: Map<String, Set<String>>) {
+        fun allows(entry: MediaEntry) = policy?.allows(entry.kind,
+            entry.categoryIds + memberships[entry.kind+":"+entry.id].orEmpty()) != false
+    }
+    internal fun visibility(): Visibility = synchronized(stateLock) {
+        ensureLoaded(); Visibility(visibilityRevision, policy, memberships.toMap())
+    }
     private var initialized = false
     private var manifest: JSONObject? = null
     private var activeLogin: ProviderLogin? = null
@@ -61,6 +75,7 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
     internal fun applyCategoryPolicy(next: CategoryPolicy): Boolean = safe { synchronized(stateLock) {
         ensureLoaded()
         if (policy == next) return@synchronized false
+        ++visibilityRevision
         val old = policy
         val sameScope = old?.scope == next.scope
         val snapshot = if (sameScope || old == null) cached() else null
@@ -140,6 +155,7 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
     fun connect(login: ProviderLogin): ProviderSnapshot = prepareConnect(login).invoke()
     internal fun prepareConnect(login: ProviderLogin, loadAllCategories: Boolean = true): () -> ProviderSnapshot = safe {
         validateLogin(login)
+        operationDeadline=System.nanoTime()+90_000_000_000L;progress="Starting connection…"
         val normalized = login.copy(name = login.name.trim().ifBlank {
             validatedUrl(login.m3uUrl.ifBlank { login.server }, login.allowHttp).host
         })
@@ -148,8 +164,11 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
         operation
     }
     private fun loadAndPublish(login: ProviderLogin, ticket: Long, loadAllCategories: Boolean = true): ProviderSnapshot {
+        operationDeadline=System.nanoTime()+90_000_000_000L
         val result = if (login.m3uUrl.isNotBlank()) loadM3u(login, ticket) else loadXtream(login, ticket, loadAllCategories)
+        checkDeadline();progress="Saving "+result.entries.size+" channels…"
         persist(login, result, ticket)
+        progress="Ready · "+result.entries.size+" channels"
         return result
     }
     private fun persist(login: ProviderLogin, result: ProviderSnapshot, ticket: Long) {
@@ -172,6 +191,7 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
                 chunk = JSONArray(); bytes = 2
             }
             for (entry in result.entries) {
+                checkDeadline()
                 val row = entryJson(entry)
                 val size = row.toString().toByteArray(Charsets.UTF_8).size + 1
                 require(size < 2 * 1024 * 1024 - 64)
@@ -254,7 +274,7 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
         base(l) + "/$type/" + encode(l.username) + "/" + encode(l.password) + "/" + encode(entry.id) + "." + ext
     }
     fun clear() = synchronized(stateLock) {
-        invalidate(); vault.clear(); memberships.clear(); policy = null; activeLogin = null; activeSnapshot = null; manifest = null; initialized = true
+        ++visibilityRevision; invalidate(); vault.clear(); memberships.clear(); policy = null; activeLogin = null; activeSnapshot = null; manifest = null; initialized = true
     }
 
     private fun loadXtream(l: ProviderLogin, ticket: Long, loadAllCategories: Boolean): ProviderSnapshot {
@@ -351,6 +371,7 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
     }
     private fun mergeMemberships(entries: List<MediaEntry>,ticket:Long): List<MediaEntry> = synchronized(stateLock) {
         checkTicket(ticket)
+        ++visibilityRevision
         val merged=linkedMapOf<Pair<String,String>,MediaEntry>()
         for(entry in entries) {
             val key=entry.kind to entry.id
@@ -491,16 +512,17 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
     }
     private fun loadM3u(l: ProviderLogin, ticket: Long): ProviderSnapshot {
         testFetch?.let { return parseM3u(it(l.m3uUrl), l) }
+        progress="Contacting playlist server…"
         var url = validatedUrl(l.m3uUrl, l.allowHttp)
         val deadline = System.nanoTime() + 120_000_000_000L
         repeat(6) {
-            checkTicket(ticket)
+            checkTicket(ticket);checkDeadline()
             val c = url.toURL().openConnection() as HttpURLConnection
             synchronized(stateLock) { checkTicket(ticket); connections.add(c) }
             try {
                 c.connectTimeout=20000; c.readTimeout=45000; c.instanceFollowRedirects=false
                 c.setRequestProperty("Accept", "application/x-mpegURL, audio/x-mpegurl, text/plain")
-                c.setRequestProperty("User-Agent", "Universe-Alaa/0.4.9")
+                c.setRequestProperty("User-Agent", "Universe-Alaa/0.4.10")
                 val status=c.responseCode
                 if(status in listOf(301,302,303,307,308)) {
                     val target=url.resolve(c.getHeaderField("Location") ?: throw ProviderFailure("Playlist redirect has no destination."))
@@ -517,13 +539,14 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
                         override fun read(b:ByteArray,off:Int,len:Int):Int {
                             checkTicket(ticket)
                             if(System.nanoTime()>deadline)throw ProviderFailure("Playlist download timed out.")
+                            checkDeadline()
                             val n=super.read(b,off,len)
                             if(n>0)count+=n
                             if(count>MAX_BYTES)throw ProviderFailure("Playlist exceeds the 32 MB limit.")
                             return n
                         }
                     }
-                    return bounded.bufferedReader(Charsets.UTF_8).use { parseM3uReader(it,l) }
+                    return bounded.bufferedReader(Charsets.UTF_8).use { parseM3uReader(it,l) { n -> checkDeadline();progress="Reading playlist · $n channels…" } }
                 }
             } finally { synchronized(stateLock){connections.remove(c)};c.disconnect() }
         }
@@ -571,11 +594,15 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
         }
         internal fun parseM3u(text: String, login: ProviderLogin): ProviderSnapshot =
             text.reader().buffered().use { parseM3uReader(it,login) }
-        private fun parseM3uReader(reader: java.io.BufferedReader, login: ProviderLogin): ProviderSnapshot {
+        private fun parseM3uReader(reader: java.io.BufferedReader, login: ProviderLogin, report:(Int)->Unit={}): ProviderSnapshot {
             val header=reader.readLine().orEmpty().trimStart('\uFEFF',' ')
             if(!header.startsWith("#EXTM3U")) throw ProviderFailure("The server did not return an M3U playlist.")
             val entries = mutableListOf<MediaEntry>()
             val groups = linkedMapOf<String, MediaCategory>()
+            val attributes=Regex("""([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s,]+))""")
+            val movie=Regex("(?i).*\\.(mp4|mkv|avi|mov|m4v|webm)$")
+            val digest=MessageDigest.getInstance("SHA-256")
+            val hex="0123456789abcdef"
             var title: String? = null
             var attrs = emptyMap<String, String>()
             for (raw in reader.lineSequence()) {
@@ -591,7 +618,7 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
                         else if (ch == ',') { separator = i; break }
                     }
                     require(separator >= 0) { "Malformed M3U entry." }
-                    attrs = Regex("""([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s,]+))""").findAll(line.substring(0, separator))
+                    attrs = attributes.findAll(line.substring(0, separator))
                         .associate { it.groupValues[1].lowercase() to it.groupValues.drop(2).firstOrNull { v -> v.isNotEmpty() }.orEmpty() }
                     title = line.substring(separator + 1).trim()
                 } else if (line.startsWith("#EXTGRP:", true)) {
@@ -603,10 +630,14 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
                         title=null;attrs=emptyMap();continue
                     }
                     val group = attrs["group-title"].orEmpty().ifBlank { "Other" }
-                    val kind = if (Regex("(?i).*\\.(mp4|mkv|avi|mov|m4v|webm)$").matches(uri.path.orEmpty())) "movie" else "live"
+                    val kind = if (movie.matches(uri.path.orEmpty())) "movie" else "live"
                     val category = "$kind:$group"
                     groups[category] = MediaCategory(category, group, kind)
-                    val id = MessageDigest.getInstance("SHA-256").digest(line.toByteArray()).joinToString("") { "%02x".format(it) }
+                    val hash=digest.digest(line.toByteArray())
+                    val chars=CharArray(hash.size*2)
+                    hash.forEachIndexed { i,b -> val n=b.toInt() and 255;chars[i*2]=hex[n ushr 4];chars[i*2+1]=hex[n and 15] }
+                    val id=String(chars)
+                    if(entries.size%100==0)report(entries.size)
                     entries += MediaEntry(id, title?.ifBlank { attrs["tvg-name"].orEmpty().ifBlank { "Untitled" } } ?: "Untitled",
                         category, kind, attrs["tvg-logo"].orEmpty(), directUrl = line)
                     title = null; attrs = emptyMap()

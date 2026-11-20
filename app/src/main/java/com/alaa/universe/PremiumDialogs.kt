@@ -68,7 +68,7 @@ object PremiumDialogs {
             b.isAllCaps=false;b.textSize=14f;b.background=focus(c,which == -1,danger)
             b.setTextColor(if(danger)0xffff929b.toInt() else if(which == -1)ink(c) else Color.WHITE)
             b.minHeight=dp(c,48);b.minimumHeight=dp(c,48);b.includeFontPadding=true;b.setPadding(dp(c,16),0,dp(c,16),0)
-            (b.layoutParams as? ViewGroup.MarginLayoutParams)?.let{it.setMargins(dp(c,4),dp(c,8),dp(c,4),dp(c,8));b.layoutParams=it}
+            (b.layoutParams as? ViewGroup.MarginLayoutParams)?.let{it.setMargins(dp(c,4),dp(c,8),dp(c,4),dp(c,16));b.layoutParams=it}
         }}
     }
     @Suppress("DEPRECATION")
