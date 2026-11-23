@@ -69,6 +69,7 @@ class AtlasThemeTest {
         s.home();shot(s,"01-home");assertEquals("البث المباشر",s.findFocus()?.contentDescription)
         key(a,KeyEvent.KEYCODE_DPAD_CENTER);shot(s,"02-live"); assertEquals("live",s.page)
         val cats=rows(s,"atlas-category-"); val channels=rows(s,"atlas-entry-")
+        val firstPageViewCount=(s.getChildAt(0) as Stage).childCount
         assertEquals(Atlas.CAT_PAGE,cats.size);assertEquals(Atlas.LIVE_PAGE,channels.size)
         assertEquals(9000,s.provider.homeCount("live"));assertTrue(cats.all{it.left==Atlas.CATEGORY_X})
         assertTrue(channels.all{it.left==Atlas.LIVE_X && ((it as TextView).gravity and Gravity.HORIZONTAL_GRAVITY_MASK)==Gravity.RIGHT})
@@ -80,7 +81,9 @@ class AtlasThemeTest {
         assertSame(preview,views(s).filterIsInstance<PlayerView>().single())
         set(s.provider,"offset",8990);s.provider.browse("live");layout(s)
         assertEquals("atlas-entry-live-9000",rows(s,"atlas-entry-").last().tag)
-        assertTrue((s.getChildAt(0) as Stage).childCount < 50)
+        assertEquals(Atlas.LIVE_PAGE,rows(s,"atlas-entry-").size)
+        // Static decorations may vary by design; page size must not grow with the catalogue.
+        assertEquals(firstPageViewCount,(s.getChildAt(0) as Stage).childCount)
         assertTrue(s.back());assertEquals("home",s.page)
         for((isSeries,n) in listOf(false to "03-movies",true to "04-series")){
             s.catalogue(isSeries);shot(s,n)
