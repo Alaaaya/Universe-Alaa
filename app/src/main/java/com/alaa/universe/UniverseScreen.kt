@@ -193,8 +193,16 @@ class UniverseScreen(context:Context): FrameLayout(context) {
     private fun atlasSettings(){
         val back=BackButton.add(stage,Atlas.mint){back()}
         Atlas.heading(stage,"الإعدادات","خصّص المظهر وأدر مكتبة المشاهدة")
-        Atlas.label(stage,"المظهر",1020,190,846,58,38f,Atlas.fg,true)
-        Atlas.label(stage,"المصدر والتطبيق",54,190,908,58,38f,Atlas.fg,true)
+        Atlas.section(stage,"المظهر",1020,187,846,60)
+        Atlas.section(stage,"المصدر والتطبيق",54,187,908,60)
+        Atlas.block(stage,1007,251,872,740,Atlas.panel,25f,Atlas.line)
+        Atlas.block(stage,41,251,934,337,Atlas.panel,25f,Atlas.line)
+        Atlas.block(stage,54,628,908,333,Atlas.panel,28f,Atlas.line)
+        Atlas.chip(stage,"ATLAS",84,660,138,43)
+        Atlas.icon(stage,R.drawable.ic_settings,847,675,58)
+        Atlas.label(stage,"أطلس",255,668,555,68,50f,Atlas.fg,true)
+        Atlas.label(stage,"الثيم النشط",190,739,620,48,29f,Atlas.mint,true)
+        Atlas.label(stage,"واجهة عربية للريموت واللمس",166,843,733,55,31f,Atlas.muted)
         val themes=listOf("أحمر","ذهبي","أزرق","أزرق ملكي","صلاة الغروب","هارك · Noir et Or","أطلس · Atlas").mapIndexed{i,title->
             Atlas.row(stage,title,1020,267+i*103,846,86,34f,i==6){selectAppearance(i)}
         }

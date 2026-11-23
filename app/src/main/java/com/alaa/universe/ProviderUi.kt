@@ -677,8 +677,10 @@ class ProviderUi(private val screen:UniverseScreen) {
         offset=if(currentList.isEmpty())0 else offset.coerceIn(0,((currentList.size-1)/count)*count)
         val items=BrowseIndex.page(currentList,offset,count)
         val xCat=Atlas.CATEGORY_X;val xLive=Atlas.LIVE_X;val top=Atlas.TOP
-        Atlas.label(s,"الفئات",xCat,171,Atlas.CATEGORY_W,37,28f,Atlas.muted,true)
-        Atlas.label(s,if(live)"القنوات" else "المكتبة",if(live)xLive else 54,171,if(live)Atlas.LIVE_W else 1397,37,28f,Atlas.muted,true)
+        Atlas.block(s,xCat-11,top-8,Atlas.CATEGORY_W+22,765,Atlas.panel,25f,Atlas.line)
+        Atlas.section(s,"الفئات",xCat,169,Atlas.CATEGORY_W)
+        Atlas.section(s,if(live)"دليل القنوات" else "رف المشاهدة",if(live)xLive else 54,169,if(live)Atlas.LIVE_W else 1402)
+        if(!live)Atlas.chip(s,if(kind=="movie")"CINEMA" else "SERIES",54,168,127,38)
         val categoryRows=BrowseIndex.page(cats,catOffset,Atlas.CAT_PAGE).mapIndexed{i,c->
             val title=when(c.id){""->"الكل";"favorites"->"المفضلة";"recent"->"المشاهدة الأخيرة";else->c.name}
             Atlas.row(s,title,xCat,top+84*i,Atlas.CATEGORY_W,75,29f,c.id==category){
@@ -706,19 +708,26 @@ class ProviderUi(private val screen:UniverseScreen) {
                 }
             }.also{v->
                 v.tag="atlas-entry-${e.id}";v.contentDescription=e.name
-                if(live)bindMove(v,false,e.id) else {
-                    Atlas.block(s,x+4,y+4,w-8,266,Atlas.panel)
-                    val icon=ImageView(context).apply { setImageResource(if(kind=="movie")R.drawable.ic_movie else R.drawable.ic_video_library);setColorFilter(Atlas.muted);importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO }
-                    s.put(icon,x+w/2-38,y+98,76,76)
-                    artwork(e,x+4,y+4,w-8,266)
-                    Atlas.label(s,e.name,x+12,y+278,w-24,65,28f,Atlas.fg,true).apply{
+                if(live){
+                    bindMove(v,false,e.id)
+                    // Numeric locator at left, with Arabic names aligned to the opposite edge.
+                    val number=Atlas.label(s,(offset+i+1).toString().padStart(2,'0'),x+21,y,w/6,h,21f,Atlas.muted,true,false)
+                    number.importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    v.setOnFocusChangeListener{_,focused->number.setTextColor(if(focused)Atlas.ink else Atlas.muted)}
+                } else {
+                    val pad=9
+                    Atlas.poster(s,kind,offset+i,x+pad,y+pad,w-2*pad,248)
+                    artwork(e,x+pad,y+pad,w-2*pad,248)
+                    Atlas.label(s,e.name,x+16,y+265,w-32,52,28f,Atlas.fg,true).apply{
                         maxLines=2;importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     }
-                    // Keep a bright focus ring exposed around the art and caption, without scaling or shadow.
-                    v.setOnFocusChangeListener{_,focused->
-                        v.background=surface(Atlas.tile,if(focused)Atlas.mint else Atlas.tile).apply{setStroke(4,if(focused)Atlas.mint else Atlas.tile)}
+                    Atlas.label(s,if(kind=="movie")"فيلم" else "مسلسل",x+16,y+318,w-32,28,19f,Atlas.muted).importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    // State-list ring avoids rebuilding a card on every D-pad movement.
+                    v.background=android.graphics.drawable.StateListDrawable().apply{
+                        addState(intArrayOf(android.R.attr.state_focused),Atlas.shape(0xff3b2b59.toInt(),22f,Atlas.mint,4))
+                        addState(intArrayOf(android.R.attr.state_pressed),Atlas.shape(0xff3b2b59.toInt(),22f,Atlas.mint,4))
+                        addState(intArrayOf(),Atlas.shape(Atlas.tile,22f,Atlas.line,2))
                     }
-                    v.background=surface(Atlas.tile)
                 }
                 val step=if(live)1 else col
                 v.setOnKeyListener{_,key,event->
@@ -741,12 +750,18 @@ class ProviderUi(private val screen:UniverseScreen) {
         back.nextFocusDownId=(categoryRows.firstOrNull()?:cards.firstOrNull())?.id?:back.id
         if(items.isEmpty())Atlas.label(s,if(!indexReady()||listKey() in pendingLists)"جارٍ تحميل المكتبة…" else "لا يوجد محتوى في هذه الفئة",if(live)xLive else 54,408,if(live)Atlas.LIVE_W else 1397,65,32f,Atlas.muted)
         if(live){
-            Atlas.label(s,"معاينة القناة",54,171,847,37,28f,Atlas.muted,true)
-            Atlas.block(s,54,top,847,760)
+            Atlas.section(s,"معاينة القناة",54,169,847)
+            Atlas.block(s,54,top,847,760,Atlas.panel,27f,Atlas.line)
             val target=priorPreview?:PlayerView(context).apply{useController=false;isFocusable=false;descendantFocusability=ViewGroup.FOCUS_BLOCK_DESCENDANTS;tag="atlas-preview"}
             s.put(target,75,236,805,453);playback.attach(target)
-            if(playback.entry==null)Atlas.label(s,"اختر قناة لبدء المعاينة",104,423,735,63,34f,Atlas.muted).gravity=Gravity.CENTER
-            Atlas.label(s,playback.entry?.name ?: "لا توجد قناة قيد التشغيل",78,715,795,74,37f,Atlas.fg,true)
+            if(playback.entry==null){
+                Atlas.block(s,76,237,803,451,0xff101426.toInt(),18f,Atlas.line)
+                Atlas.block(s,426,363,104,104,0xff2b2449.toInt(),52f)
+                Atlas.icon(s,R.drawable.ic_live_tv,451,387,54)
+                Atlas.label(s,"اختر قناة لبدء المعاينة",104,488,747,50,34f,Atlas.fg,true).gravity=Gravity.CENTER
+            }
+            Atlas.chip(s,if(playback.entry==null)"بانتظار الاختيار" else "قيد التشغيل",686,711,183,41)
+            Atlas.label(s,playback.entry?.name ?: "لا توجد قناة قيد التشغيل",78,758,795,55,37f,Atlas.fg,true)
             val actions=listOf(
                 Atlas.row(s,"المفضلة",76,834,245,70,26f){selected?.takeIf{it.kind=="live"}?.let{if(!favorites.add(identity(it)))favorites.remove(identity(it));saveState();toast("تم تحديث المفضلة")}},
                 Atlas.row(s,"الصوت والترجمة",340,834,260,70,26f){playback.trackMenu()},
