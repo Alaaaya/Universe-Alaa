@@ -100,7 +100,7 @@ class AtlasThemeTest {
         assertEquals(Atlas.ID,a.getSharedPreferences("appearance",0).getString("theme",null))
         c.pause().stop().destroy()
     }
-    @Test @Config(qualifiers="w960dp-h540dp-land-normal-mdpi") fun phoneLandscapeTapAndVerticalSwipe() {
+    @Test @Config(qualifiers="w960dp-h540dp-land-mdpi") fun phoneLandscapeTapAndVerticalSwipe() {
         val c=Robolectric.buildActivity(HomeActivity::class.java).create();val a=c.get();val s=a.screen
         shadowOf(a.packageManager).setSystemFeature("android.hardware.touchscreen",true)
         s.provider.testMode=true;c.start().resume().visible();load(s);s.theme=Atlas.ID;s.home()
