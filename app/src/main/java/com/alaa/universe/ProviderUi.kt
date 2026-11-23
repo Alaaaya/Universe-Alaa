@@ -463,8 +463,9 @@ class ProviderUi(private val screen:UniverseScreen) {
         stage!!.put(image,x,y,w,h);pictures.add(image)
         com.bumptech.glide.Glide.with(context).asBitmap().load(uri.toASCIIString()).diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.RESOURCE).skipMemoryCache(false).override(w,h).timeout(15000).into(image)
     }
-    private fun bindAtlasChannelLogo(e:MediaEntry,image:ImageView) {
-        val placeholder=androidx.core.content.ContextCompat.getDrawable(context,R.drawable.ic_live_tv)!!.mutate().apply{setTint(Atlas.mint)}
+    private fun bindAtlasChannelLogo(e:MediaEntry,image:ImageView) = bindAtlasChannelLogo(e,image,Atlas.mint,64)
+    private fun bindAtlasChannelLogo(e:MediaEntry,image:ImageView,placeholderTint:Int,decodeSize:Int) {
+        val placeholder=androidx.core.content.ContextCompat.getDrawable(context,R.drawable.ic_live_tv)!!.mutate().apply{setTint(placeholderTint)}
         image.setImageDrawable(placeholder)
         if(!testMode && !repository.isVisible(e))return
         val uri=runCatching{ProviderRepository.validatedUrl(e.icon.trim(),imageHttpAllowed)}.getOrNull()?:return
@@ -473,7 +474,7 @@ class ProviderUi(private val screen:UniverseScreen) {
             com.bumptech.glide.Glide.with(context).load(uri.toASCIIString())
                 .placeholder(placeholder).error(placeholder)
                 .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.RESOURCE)
-                .override(64,64).timeout(10000).into(image)
+                .override(decodeSize,decodeSize).timeout(10000).into(image)
         }
         image.addOnAttachStateChangeListener(object:View.OnAttachStateChangeListener{
             override fun onViewAttachedToWindow(v:View){load()}
@@ -935,7 +936,7 @@ class ProviderUi(private val screen:UniverseScreen) {
                 if(!favorites.add(identity(favoriteItem)))favorites.remove(identity(favoriteItem))
                 saveState();identity(favoriteItem) in favorites
             },artwork={image->
-                if(atlas && item.kind=="live") bindAtlasChannelLogo(item,image) else {
+                if(atlas && item.kind=="live") bindAtlasChannelLogo(item,image,0xff614c27.toInt(),112) else {
                     val art=item.icon.ifBlank{parent?.icon.orEmpty()}
                     val uri=runCatching{ProviderRepository.validatedUrl(art,imageHttpAllowed)}.getOrNull()
                     if(uri!=null && (testMode || repository.isVisible(item))){

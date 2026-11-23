@@ -35,8 +35,8 @@ class AtlasThemeTest {
         s.layout(0,0,w,h);shadowOf(Looper.getMainLooper()).idle()
         s.measure(View.MeasureSpec.makeMeasureSpec(w,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(h,View.MeasureSpec.EXACTLY));s.layout(0,0,w,h)
     }
-    private fun shot(s:UniverseScreen,name:String){
-        layout(s);val path=File("build/atlas-captures").apply{mkdirs()}
+    private fun shot(s:UniverseScreen,name:String,w:Int=1920,h:Int=1080){
+        layout(s,w,h);val path=File("build/atlas-captures").apply{mkdirs()}
         val b=Bitmap.createBitmap(s.width,s.height,Bitmap.Config.ARGB_8888);s.draw(Canvas(b))
         File(path,"$name.png").outputStream().use{assertTrue(b.compress(Bitmap.CompressFormat.PNG,100,it))};b.recycle()
     }
@@ -152,6 +152,11 @@ class AtlasThemeTest {
         layout(s)
         return views(s).filterIsInstance<FullscreenControls>().single()
     }
+    private fun fixtureStill(a:HomeActivity):ImageView=ImageView(a).apply{
+        val supplied=System.getenv("ATLAS_REFERENCE_STILL")?.let{android.graphics.BitmapFactory.decodeFile(it)}
+        if(supplied!=null)setImageBitmap(supplied) else setImageResource(R.drawable.atlas_orbit)
+        scaleType=ImageView.ScaleType.CENTER_CROP
+    }
     @Test fun fullscreenAtlasDockKeepsChannelFavoriteQualityAndTransportOnRemote() {
         val c=Robolectric.buildActivity(HomeActivity::class.java).create();val a=c.get();val s=a.screen
         s.provider.testMode=true;c.start().resume().visible();load(s);s.theme=Atlas.ID
@@ -160,14 +165,15 @@ class AtlasThemeTest {
         assertEquals(1920,video.width);assertEquals(1080,video.height)
         val dock=s.findViewWithTag<View>("atlas-live-dock")
         val logo=s.findViewWithTag<ImageView>("atlas-player-logo")
-        assertTrue(dock.top>video.height*3/4);assertNotNull(logo.drawable)
+        assertTrue(dock.top>video.height*3/4 && dock.height<video.height/5);assertNotNull(logo.drawable)
+        assertFalse(s.findViewWithTag<TextView>("atlas-player-clock").text.isNullOrBlank())
         val channels=s.findViewWithTag<View>("atlas-player-channels")
         val favorite=s.findViewWithTag<FullscreenControls.Control>("atlas-player-favorite")
         val quality=s.findViewWithTag<View>("atlas-player-quality")
         assertTrue(logo.left < channels.left && channels.left < favorite.left && favorite.left < quality.left)
         assertSame(channels,s.findFocus())
         // Render native controls over a known still instead of implying live playback.
-        val still=ImageView(a).apply{setImageResource(R.drawable.atlas_orbit);scaleType=ImageView.ScaleType.CENTER_CROP}
+        val still=fixtureStill(a)
         val scene=video.parent as Stage
         scene.put(still,0,0,1920,1080);controls.bringToFront()
         shot(s,"07-fullscreen-live");scene.removeView(still)
@@ -202,6 +208,9 @@ class AtlasThemeTest {
             shadowOf(Looper.getMainLooper()).idle()
         }
         controls.conceal();tap(450f,240f);assertEquals(View.VISIBLE,controls.visibility)
+        val scene=views(s).filterIsInstance<PlayerView>().single().parent as Stage
+        val still=fixtureStill(a);scene.put(still,0,0,1920,1080);controls.bringToFront()
+        shot(s,"08-fullscreen-phone",960,540);scene.removeView(still)
         val favorite=s.findViewWithTag<FullscreenControls.Control>("atlas-player-favorite")
         tap((favorite.left+favorite.right)/2f,(favorite.top+favorite.bottom)/2f)
         assertTrue(favorite.selectedIcon)
