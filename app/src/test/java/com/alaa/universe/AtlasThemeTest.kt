@@ -8,6 +8,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.media3.ui.PlayerView
 import org.junit.Assert.*
@@ -71,11 +72,12 @@ class AtlasThemeTest {
         val cats=rows(s,"atlas-category-"); val channels=rows(s,"atlas-entry-")
         val firstPageViewCount=(s.getChildAt(0) as Stage).childCount
         assertEquals(Atlas.CAT_PAGE,cats.size);assertEquals(Atlas.LIVE_PAGE,channels.size)
-        assertEquals(9000,s.provider.homeCount("live"));assertTrue(cats.all{it.left==Atlas.CATEGORY_X})
-        assertTrue(channels.all{it.left==Atlas.LIVE_X && ((it as TextView).gravity and Gravity.HORIZONTAL_GRAVITY_MASK)==Gravity.RIGHT})
+        assertEquals(9000,s.provider.homeCount("live"));assertTrue(cats.all{it.left==1920-Atlas.CATEGORY_X-Atlas.CATEGORY_W})
+        assertTrue(channels.all{it.left==1920-Atlas.LIVE_X-Atlas.LIVE_W && ((it as TextView).gravity and Gravity.HORIZONTAL_GRAVITY_MASK)==Gravity.LEFT})
         val preview=views(s).filterIsInstance<PlayerView>().single();assertEquals("atlas-preview",preview.tag)
-        assertTrue(s.childCount==1 && preview.right<channels.first().left)
-        key(a,KeyEvent.KEYCODE_DPAD_LEFT);assertEquals("atlas-entry-live-1",s.findFocus()?.tag)
+        assertTrue(s.childCount==1 && preview.left>channels.first().right)
+        assertEquals("atlas-category-",s.findFocus()?.tag)
+        key(a,KeyEvent.KEYCODE_DPAD_RIGHT);assertEquals("atlas-entry-live-1",s.findFocus()?.tag)
         repeat(Atlas.LIVE_PAGE){key(a,KeyEvent.KEYCODE_DPAD_DOWN);layout(s)}
         assertEquals("atlas-entry-live-11",s.findFocus()?.tag)
         assertSame(preview,views(s).filterIsInstance<PlayerView>().single())
@@ -89,8 +91,10 @@ class AtlasThemeTest {
             s.catalogue(isSeries);shot(s,n)
             val cards=rows(s,"atlas-entry-");assertEquals(Atlas.GRID_PAGE,cards.size)
             assertEquals(2,cards.map{it.top}.distinct().size);assertEquals(5,cards.map{it.left}.distinct().size)
-            assertTrue(cards[0].left>cards[1].left)
-            cards.first().requestFocus();key(a,KeyEvent.KEYCODE_DPAD_LEFT);assertEquals(cards[1].tag,s.findFocus()?.tag)
+            assertTrue(cards[0].left<cards[1].left)
+            assertEquals("atlas-category-",s.findFocus()?.tag)
+            key(a,KeyEvent.KEYCODE_DPAD_RIGHT);assertEquals(cards[0].tag,s.findFocus()?.tag)
+            key(a,KeyEvent.KEYCODE_DPAD_RIGHT);assertEquals(cards[1].tag,s.findFocus()?.tag)
             key(a,KeyEvent.KEYCODE_DPAD_DOWN);assertEquals(cards[6].tag,s.findFocus()?.tag)
             key(a,KeyEvent.KEYCODE_DPAD_DOWN);layout(s)
             assertTrue(s.findFocus()?.tag.toString().endsWith("-12"))
@@ -103,6 +107,26 @@ class AtlasThemeTest {
         assertEquals(Atlas.ID,a.getSharedPreferences("appearance",0).getString("theme",null))
         c.pause().stop().destroy()
     }
+    @Test fun atlasShowsATVBadgeForEveryChannelInAllAndFilteredLists() {
+        val c=Robolectric.buildActivity(HomeActivity::class.java).create();val s=c.get().screen
+        s.provider.testMode=true;c.start().resume().visible();load(s);s.theme=Atlas.ID
+        s.categories();layout(s)
+        fun checkBadges(expectedFirst:String){
+            val channels=rows(s,"atlas-entry-").map{it as TextView}
+            val logos=rows(s,"atlas-channel-logo-").map{it as ImageView}
+            assertEquals(Atlas.LIVE_PAGE,channels.size);assertEquals(channels.size,logos.size)
+            assertEquals("atlas-channel-logo-$expectedFirst",logos.first().tag)
+            channels.zip(logos).forEach{(row,logo)->
+                assertEquals(row.tag.toString().removePrefix("atlas-entry-"),logo.tag.toString().removePrefix("atlas-channel-logo-"))
+                assertNotNull(logo.drawable);assertFalse(logo.isFocusable);assertFalse(logo.isClickable)
+                assertTrue(logo.left>=row.left && logo.right<=row.left+row.paddingLeft)
+            }
+        }
+        checkBadges("live-1")
+        s.findViewWithTag<View>("atlas-category-2").performClick();layout(s)
+        checkBadges("live-2");shot(s,"06-live-category")
+        c.pause().stop().destroy()
+    }
     @Test @Config(qualifiers="w960dp-h540dp-land-mdpi") fun phoneLandscapeTapAndVerticalSwipe() {
         val c=Robolectric.buildActivity(HomeActivity::class.java).create();val a=c.get();val s=a.screen
         shadowOf(a.packageManager).setSystemFeature("android.hardware.touchscreen",true)
@@ -110,12 +134,12 @@ class AtlasThemeTest {
         layout(s,960,540);assertTrue(PhoneInput.enabled(a))
         fun motion(start:Long,t:Long,action:Int,x:Float,y:Float){val e=MotionEvent.obtain(start,t,action,x,y,0);s.dispatchTouchEvent(e);e.recycle()}
         fun tap(x:Float,y:Float){motion(0,0,0,x,y);motion(0,80,1,x,y);shadowOf(Looper.getMainLooper()).idle()}
-        tap(720f,160f);layout(s,960,540);assertEquals("live",s.page)
-        motion(100,100,0,600f,405f);motion(100,130,2,600f,288f);motion(100,190,1,600f,190f)
+        tap(240f,160f);layout(s,960,540);assertEquals("live",s.page)
+        motion(100,100,0,360f,405f);motion(100,130,2,360f,288f);motion(100,190,1,360f,190f)
         layout(s,960,540);assertEquals("atlas-entry-live-11",rows(s,"atlas-entry-").first().tag)
-        s.home();layout(s,960,540);tap(740f,220f);layout(s,960,540);assertEquals("movies",s.page)
+        s.home();layout(s,960,540);tap(220f,220f);layout(s,960,540);assertEquals("movies",s.page)
         assertEquals(10,rows(s,"atlas-entry-").size)
-        s.home();layout(s,960,540);tap(740f,332f);layout(s,960,540);assertEquals("themes",s.page)
+        s.home();layout(s,960,540);tap(220f,332f);layout(s,960,540);assertEquals("themes",s.page)
         c.pause().stop().destroy()
     }
 }

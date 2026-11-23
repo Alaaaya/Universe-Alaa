@@ -336,7 +336,7 @@ class ProviderUi(private val screen:UniverseScreen) {
     private fun toast(value:String){PremiumDialogs.toast(context,value,true)}
     fun loginDialog(){
         if(busy){toast("Playlist is updating");return}
-        val root=LinearLayout(context).apply{orientation=LinearLayout.VERTICAL;setPadding(PremiumDialogs.dp(context,24),0,PremiumDialogs.dp(context,24),PremiumDialogs.dp(context,8))}
+        val root=LinearLayout(context).apply{orientation=LinearLayout.VERTICAL;if(atlas)layoutDirection=View.LAYOUT_DIRECTION_LTR;setPadding(PremiumDialogs.dp(context,24),0,PremiumDialogs.dp(context,24),PremiumDialogs.dp(context,8))}
         val device=LinearLayout(context).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(12,8,12,8);background=PremiumDialogs.surface(context,0xff1a2433.toInt())}
         device.addView(PremiumDialogs.text(context,panelSummary(),13f),LinearLayout.LayoutParams(0,-2,1f))
         device.addView(PremiumDialogs.button(context,"Copy"){(context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Device code",if(testMode)"" else panel.code));toast("Device code copied")})
@@ -345,11 +345,12 @@ class ProviderUi(private val screen:UniverseScreen) {
         val xtream=LinearLayout(context).apply{orientation=LinearLayout.VERTICAL}
         val m3uGroup=LinearLayout(context).apply{orientation=LinearLayout.VERTICAL;visibility=View.GONE}
         fun field(parent:LinearLayout,label:String,hint:String,password:Boolean=false):EditText {
-            parent.addView(PremiumDialogs.text(context,label,13f))
+            parent.addView(PremiumDialogs.text(context,label,13f).apply{if(atlas){gravity=Gravity.LEFT;textDirection=View.TEXT_DIRECTION_FIRST_STRONG}})
             return EditText(context).apply{
                 this.hint=hint;setSingleLine(true);textSize=16f;setTextColor(Color.WHITE);setHintTextColor(0xffadbcd1.toInt())
                 inputType=if(password)InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD else InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-                typeface=android.graphics.Typeface.create("sans-serif",0);textDirection=View.TEXT_DIRECTION_LTR
+                typeface=android.graphics.Typeface.create("sans-serif",0);textDirection=if(atlas&&parent===root)View.TEXT_DIRECTION_FIRST_STRONG else View.TEXT_DIRECTION_LTR
+                if(atlas)gravity=Gravity.LEFT or Gravity.CENTER_VERTICAL
                 val icon=context.getDrawable(if(password)android.R.drawable.ic_lock_lock else android.R.drawable.ic_menu_edit)?.mutate()?.apply{setTint(PremiumDialogs.accent(context));setBounds(0,0,PremiumDialogs.dp(context,18),PremiumDialogs.dp(context,18))}
                 setCompoundDrawablesRelative(icon,null,null,null);compoundDrawablePadding=PremiumDialogs.dp(context,12)
                 background=PremiumDialogs.focus(context);setPadding(16,8,16,8);minimumHeight=PremiumDialogs.dp(context,48)
@@ -422,6 +423,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         dialog.setOnCancelListener{repository.cancelConnect();busy=false;generation++}
         dialog.show()
         dialog.getButton(-2)?.setOnClickListener{repository.cancelConnect();busy=false;generation++;dialog.dismiss()}
+        if(atlas)dialog.window?.decorView?.layoutDirection=View.LAYOUT_DIRECTION_LTR
         dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
     }
     private fun confirmRemove(){
@@ -449,7 +451,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         statusView=null
     }
     private fun text(s:String,x:Int,y:Int,w:Int,h:Int,size:Float=28f):TextView{
-        if(atlas)return Atlas.label(stage!!,s,x,y,w,h,size)
+        if(atlas)return Atlas.label(stage!!,s,x,y,w,h,size,right=false)
         val v=TextView(context).apply{text=s;setTextColor(Color.WHITE);gravity=Gravity.CENTER_VERTICAL;maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END;includeFontPadding=false;layoutDirection=View.LAYOUT_DIRECTION_LTR}
         if(harak){v.typeface=Harak.font(context);v.setTextColor(Harak.FG);v.gravity=Gravity.LEFT or Gravity.CENTER_VERTICAL}
         stage!!.put(v,x,y,w,h,size);return v
@@ -461,17 +463,35 @@ class ProviderUi(private val screen:UniverseScreen) {
         stage!!.put(image,x,y,w,h);pictures.add(image)
         com.bumptech.glide.Glide.with(context).asBitmap().load(uri.toASCIIString()).diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.RESOURCE).skipMemoryCache(false).override(w,h).timeout(15000).into(image)
     }
+    private fun bindAtlasChannelLogo(e:MediaEntry,image:ImageView) {
+        val placeholder=androidx.core.content.ContextCompat.getDrawable(context,R.drawable.ic_live_tv)!!.mutate().apply{setTint(Atlas.mint)}
+        image.setImageDrawable(placeholder)
+        if(!testMode && !repository.isVisible(e))return
+        val uri=runCatching{ProviderRepository.validatedUrl(e.icon.trim(),imageHttpAllowed)}.getOrNull()?:return
+        fun load(){
+            if(!testMode && !repository.isVisible(e))return
+            com.bumptech.glide.Glide.with(context).load(uri.toASCIIString())
+                .placeholder(placeholder).error(placeholder)
+                .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.RESOURCE)
+                .override(64,64).timeout(10000).into(image)
+        }
+        image.addOnAttachStateChangeListener(object:View.OnAttachStateChangeListener{
+            override fun onViewAttachedToWindow(v:View){load()}
+            override fun onViewDetachedFromWindow(v:View){com.bumptech.glide.Glide.with(context).clear(image)}
+        })
+        if(image.isAttachedToWindow)load()
+    }
     private fun button(s:String,x:Int,y:Int,w:Int,h:Int,action:()->Unit):TextView=
-        if(atlas) Atlas.row(stage!!,s,x,y,w,h,action=action) else text(s,x,y,w,h).apply{
+        if(atlas) Atlas.row(stage!!,s,x,y,w,h,action=action).apply{gravity=Gravity.LEFT or Gravity.CENTER_VERTICAL} else text(s,x,y,w,h).apply{
             id=View.generateViewId();isFocusable=true;isFocusableInTouchMode=true;isClickable=true
             background=if(harak)Harak.box() else surface(0x44182438);if(harak)setPadding(18,0,18,0)
             setOnFocusChangeListener{_,f->background=if(harak)Harak.box(focus=f) else surface(if(f)accent else 0x44182438)}
             setOnClickListener{action()};contentDescription=s
         }
     private fun focus(v:View?){v?.requestFocus()}
-    private fun header(title:String){
+    private fun header(title:String,atlasAlreadyLeft:Boolean=false){
         BackButton.add(stage!!,accent){screen.back()}
-        if(atlas){Atlas.heading(stage!!,title,"أطلس  /  مكتبة المشاهدة");return}
+        if(atlas){Atlas.heading(stage!!,title,"أطلس  /  مكتبة المشاهدة",leftFirst=atlasAlreadyLeft);return}
         if(harak){Harak.chrome(stage!!,screen,title,when(mode){"live"->1;"movie"->2;else->3});return}
         text("universe-Alaa",120,30,550,75,42f).setTextColor(accent)
         text(title,800,30,1072,75,43f)
@@ -710,7 +730,8 @@ class ProviderUi(private val screen:UniverseScreen) {
                 v.tag="atlas-entry-${e.id}";v.contentDescription=e.name
                 if(live){
                     bindMove(v,false,e.id)
-                    // Numeric locator at left, with Arabic names aligned to the opposite edge.
+                    bindAtlasChannelLogo(e,Atlas.channelBadge(s,v,e,x,y,w,h,startInset=88))
+                    // After scene mirroring, the badge/name lead the row and its number sits on the far edge.
                     val number=Atlas.label(s,(offset+i+1).toString().padStart(2,'0'),x+21,y,w/6,h,21f,Atlas.muted,true,false)
                     number.importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     v.setOnFocusChangeListener{_,focused->number.setTextColor(if(focused)Atlas.ink else Atlas.muted)}
@@ -773,7 +794,9 @@ class ProviderUi(private val screen:UniverseScreen) {
             playback.zap={delta->zap(delta)}
         }
         Atlas.label(s,if(moving!=null)"↑ ↓ انقل العنصر · OK حفظ · رجوع إلغاء" else "${if(items.isEmpty())0 else offset+1}–${offset+items.size} / ${currentList.size}",if(live)xLive else 54,997,if(live)Atlas.LIVE_W else 1397,44,25f,Atlas.muted)
-        s.swipe=swipe@{x,_,dx,dy->
+        s.mirrorAtlasScene()
+        s.swipe=swipe@{physicalX,_,dx,dy->
+            val x=1920f-physicalX
             if(kotlin.math.abs(dy)<kotlin.math.abs(dx) || (live && x<xLive))return@swipe
             val direction=if(dy<0)1 else -1
             if(x>=xCat){
@@ -788,7 +811,7 @@ class ProviderUi(private val screen:UniverseScreen) {
             browse(kind)
         }
         val preferred=nextCatFocus?.let{categoryRows.getOrNull(it)} ?: nextCardFocus?.let{cards.getOrNull(it.coerceAtMost(cards.lastIndex))}
-        focus(preferred?:previousFocus?.let{s.findViewWithTag<View>(it)}?:if(live)categoryRows.firstOrNull()?:cards.firstOrNull() else cards.firstOrNull()?:categoryRows.firstOrNull())
+        focus(preferred?:previousFocus?.let{s.findViewWithTag<View>(it)}?:categoryRows.firstOrNull()?:cards.firstOrNull())
         nextCatFocus=null
         if(items.isNotEmpty())nextCardFocus=null
     }
@@ -807,19 +830,19 @@ class ProviderUi(private val screen:UniverseScreen) {
     fun detail(series:Boolean){
         val detailToken=++detailGeneration
         val e=selected?:run{browse(if(series)"series" else "movie");return}
-        playback.stop();reset();header(e.name)
-        text(e.name,if(harak)348 else 80,if(harak)182 else 200,if(harak)246 else 540,if(harak)368 else 630,if(harak)32f else 55f).apply{maxLines=7;gravity=Gravity.CENTER;background=surface(0x55233149)}
-        artwork(e,if(harak)350 else 85,if(harak)184 else 205,if(harak)242 else 530,if(harak)364 else 620)
+        playback.stop();reset();header(e.name,atlasAlreadyLeft=true)
+        text(e.name,if(atlas)1300 else if(harak)348 else 80,if(harak)182 else 200,if(harak)246 else 540,if(harak)368 else 630,if(harak)32f else 55f).apply{maxLines=7;gravity=Gravity.CENTER;background=surface(0x55233149)}
+        artwork(e,if(atlas)1305 else if(harak)350 else 85,if(harak)184 else 205,if(harak)242 else 530,if(harak)364 else 620)
         if(!series){
             if(harak)Harak.label(stage!!,e.name,650,182,1170,90,48f,true)
-            if(atlas)Atlas.label(stage!!,e.name,716,176,1100,82,52f,Atlas.fg,true)
-            text(e.plot.ifBlank{if(atlas)"فيلم من قائمة المشاهدة المتصلة" else "Movie from your connected playlist"},if(harak)650 else 720,if(harak)310 else if(atlas)286 else 220,1100,if(harak)280 else 400,if(harak)26f else 33f).apply{maxLines=8;gravity=Gravity.TOP or if(atlas)Gravity.RIGHT else Gravity.LEFT}
-            val play=button(if(harak||atlas)"شاهد الآن" else "Play Movie",if(harak)650 else 720,if(harak)670 else 800,480,90){playChecked(e);fullscreen()}
+            if(atlas)Atlas.label(stage!!,e.name,75,176,1130,82,52f,Atlas.fg,true,false)
+            text(e.plot.ifBlank{if(atlas)"فيلم من قائمة المشاهدة المتصلة" else "Movie from your connected playlist"},if(atlas)75 else if(harak)650 else 720,if(harak)310 else if(atlas)286 else 220,1100,if(harak)280 else 400,if(harak)26f else 33f).apply{maxLines=8;gravity=Gravity.TOP or Gravity.LEFT}
+            val play=button(if(harak||atlas)"شاهد الآن" else "Play Movie",if(atlas)75 else if(harak)650 else 720,if(harak)670 else 800,480,90){playChecked(e);fullscreen()}
             if(harak)play.background=Harak.gold()
-            val fav=button(if(harak||atlas){if(identity(e) in favorites)"إزالة من المفضلة" else "إضافة إلى المفضلة"}else if(identity(e) in favorites)"Remove Favorite" else "Add Favorite",if(harak)1160 else 1230,if(harak)670 else 800,570,90){if(!favorites.add(identity(e)))favorites.remove(identity(e));saveState();detail(false)}
+            val fav=button(if(harak||atlas){if(identity(e) in favorites)"إزالة من المفضلة" else "إضافة إلى المفضلة"}else if(identity(e) in favorites)"Remove Favorite" else "Add Favorite",if(atlas)585 else if(harak)1160 else 1230,if(harak)670 else 800,570,90){if(!favorites.add(identity(e)))favorites.remove(identity(e));saveState();detail(false)}
             play.nextFocusRightId=fav.id;fav.nextFocusLeftId=play.id;focus(play)
         } else {
-            text("Loading seasons and episodes…",720,220,1100,100,36f)
+            text(if(atlas)"جارٍ تحميل المواسم والحلقات…" else "Loading seasons and episodes…",if(atlas)75 else 720,220,1100,100,36f)
             val id=e.id
             val selectedRepository=repository
             val load=runCatching{selectedRepository.prepareEpisodes(e)}.getOrNull()?:return
@@ -830,14 +853,14 @@ class ProviderUi(private val screen:UniverseScreen) {
                 val result=runCatching{load()}
                 main.post{if(!closed&&detailToken==detailGeneration&&selected?.id==id&&screen.page=="series-detail"){
                     result.onSuccess{episodeList=it;season=it.firstOrNull()?.season?:0;seasonOffset=0;episodeOffset=0;if(!full)renderEpisodes()}
-                    result.onFailure{if(cached.isEmpty()&&!full)text("Episodes unavailable. Check connection and try again.",720,340,1100,100,30f)}
+                    result.onFailure{if(cached.isEmpty()&&!full)text(if(atlas)"الحلقات غير متاحة. تحقّق من الاتصال وحاول مجدداً." else "Episodes unavailable. Check connection and try again.",if(atlas)75 else 720,340,1100,100,30f)}
                 }}
             }
         }
     }
     private fun renderEpisodes(){
         if(full)return
-        reset();header(selected?.name.orEmpty())
+        reset();header(selected?.name.orEmpty(),atlasAlreadyLeft=true)
         if(harak){
             val entry=selected
             Harak.label(stage!!,entry?.name.orEmpty(),624,172,1200,80,48f,true)
@@ -846,12 +869,12 @@ class ProviderUi(private val screen:UniverseScreen) {
         }
         val seasons=episodeList.map{it.season}.distinct().sorted()
         if(season !in seasons)season=seasons.firstOrNull()?:0
-        if(seasons.isEmpty()){text("No episodes returned by this provider",100,320,1700,100,38f);return}
+        if(seasons.isEmpty()){text(if(atlas)"لا توجد حلقات في هذا المصدر" else "No episodes returned by this provider",100,320,1700,100,38f);return}
         val seasonPage=if(harak)5 else 10
         val episodePage=if(harak)6 else 10
         seasonOffset=seasonOffset.coerceIn(0,maxOf(0,seasons.size-seasonPage))
         val rows=seasons.drop(seasonOffset).take(seasonPage).mapIndexed{i,n->
-            button(if(harak||atlas)"الموسم $n" else "Season $n",if(harak)348+i*304 else 80,if(harak)568 else 180+i*76,if(harak)286 else 470,70){season=n;episodeOffset=0;renderEpisodes()}.also{v->
+            button(if(harak||atlas)"الموسم $n" else "Season $n",if(harak)348+i*304 else 80,if(harak)568 else 180+i*76,if(harak)286 else 470,70){season=n;episodeOffset=0;if(atlas)nextEpisodeFocus=0;renderEpisodes()}.also{v->
                 v.setOnKeyListener{_,key,event->if(event.action!=0)false
                 else if(key==(if(harak)22 else 20)&&i==seasonPage-1&&seasonOffset+seasonPage<seasons.size){seasonOffset++;nextSeasonFocus=seasonPage-1;renderEpisodes();true}
                 else if(key==(if(harak)21 else 19)&&i==0&&seasonOffset>0){seasonOffset--;nextSeasonFocus=0;renderEpisodes();true}else false}
@@ -888,8 +911,8 @@ class ProviderUi(private val screen:UniverseScreen) {
             rows.forEach{it.nextFocusRightId=eps.firstOrNull()?.id?:it.id}
             eps.forEach{it.nextFocusLeftId=rows.firstOrNull()?.id?:it.id}
         }
-        text("${all.size} episodes   ·   ↑ ↓ More episodes",620,985,1200,60,25f)
-        focus(if(nextSeasonFocus!=null)rows.getOrNull(nextSeasonFocus!!) else eps.getOrNull((nextEpisodeFocus?:0).coerceAtMost(eps.lastIndex.coerceAtLeast(0)))?:rows.firstOrNull());nextSeasonFocus=null;nextEpisodeFocus=null
+        text(if(atlas)"${all.size} حلقة   ·   ↑ ↓ المزيد من الحلقات" else "${all.size} episodes   ·   ↑ ↓ More episodes",620,985,1200,60,25f)
+        focus(if(nextSeasonFocus!=null)rows.getOrNull(nextSeasonFocus!!) else if(atlas&&nextEpisodeFocus==null)rows.firstOrNull()?:eps.firstOrNull() else eps.getOrNull((nextEpisodeFocus?:0).coerceAtMost(eps.lastIndex.coerceAtLeast(0)))?:rows.firstOrNull());nextSeasonFocus=null;nextEpisodeFocus=null
     }
     private fun fullscreen(){
         val item=playback.entry?:return
@@ -901,9 +924,9 @@ class ProviderUi(private val screen:UniverseScreen) {
         val categoryName=snapshot?.categories?.firstOrNull{it.kind==item.kind && it.id==item.categoryId}?.name.orEmpty()
         val episodeIndex=episodeList.filter{it.season==item.season}.indexOfFirst{it.id==item.id}
         val subtitle=when(item.kind){
-            "live"->categoryName.ifBlank{"Live TV"}
-            "episode"->listOfNotNull(parent?.name, "S${item.season}"+if(episodeIndex>=0)"E${episodeIndex+1}" else "", "Episode").joinToString(" · ")
-            else->categoryName.ifBlank{"Movie"}
+            "live"->categoryName.ifBlank{if(atlas)"بث مباشر" else "Live TV"}
+            "episode"->listOfNotNull(parent?.name, "S${item.season}"+if(episodeIndex>=0)"E${episodeIndex+1}" else "", if(atlas)"حلقة" else "Episode").joinToString(" · ")
+            else->categoryName.ifBlank{if(atlas)"فيلم" else "Movie"}
         }
         val favoriteItem=parent?:item
         val controls=FullscreenControls(context,playback,item,accent,subtitle,identity(favoriteItem) in favorites,
@@ -947,7 +970,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         val overlay=ChannelOverlay(context,channels,playback.entry?.id.orEmpty(),accent,{entry->
             closeChannelList();selected=entry;playChecked(entry);recents.add(identity(entry));saveState()
             fullscreen();fullscreenControls?.conceal()
-        },{closeChannelList()})
+        },{closeChannelList()},atlasLogo=if(atlas)::bindAtlasChannelLogo else null)
         channelOverlay=overlay
         stage!!.put(overlay,0,0,1920,1080)
     }

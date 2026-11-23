@@ -25,6 +25,27 @@ class Stage(context: Context): ViewGroup(context) {
     fun place(v:View,x:Int,y:Int,w:Int,h:Int,font:Float?=null) {
         slots[v]=Slot(x,y,w,h,font);requestLayout()
     }
+    /** Convert the original Atlas scene coordinates to physical left-first layout. */
+    internal fun mirrorAtlasScene() {
+        val hasBack=findViewWithTag<View>("universe-back")!=null
+        slots.keys.toList().forEach { view ->
+            val slot=slots.getValue(view)
+            val left=1920-slot.x-slot.w
+            val x=if(view.tag=="universe-back")slot.x else if(view.tag=="atlas-heading"&&hasBack)130 else left
+            val width=if(view.tag=="atlas-heading"&&x==130)slot.w-(x-left) else slot.w
+            if(view is TextView){
+                val g=view.gravity
+                val horizontal=g and Gravity.HORIZONTAL_GRAVITY_MASK
+                if(horizontal==Gravity.RIGHT||horizontal==Gravity.LEFT)
+                    view.gravity=(g and Gravity.HORIZONTAL_GRAVITY_MASK.inv()) or if(horizontal==Gravity.RIGHT)Gravity.LEFT else Gravity.RIGHT
+            }
+            val oldLeft=view.nextFocusLeftId
+            view.nextFocusLeftId=view.nextFocusRightId
+            view.nextFocusRightId=oldLeft
+            slots[view]=slot.copy(x=x,w=width)
+        }
+        requestLayout()
+    }
     override fun onMeasure(w:Int,h:Int) {
         val width=MeasureSpec.getSize(w); val height=MeasureSpec.getSize(h)
         val s=minOf(width/1920f,height/1080f)

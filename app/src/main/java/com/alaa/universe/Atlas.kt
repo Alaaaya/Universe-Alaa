@@ -74,6 +74,29 @@ internal object Atlas {
         id=View.generateViewId();isFocusable=true;isFocusableInTouchMode=true;isClickable=true
         contentDescription=title;setOnClickListener{action()}
     }
+    /** Decorations stay out of focus and touch routing; the enclosing row is the only control. */
+    fun channelBadge(s:Stage,row:TextView,entry:MediaEntry,x:Int,y:Int,w:Int,h:Int,startInset:Int=20,mirrorScene:Boolean=true):ImageView {
+        val size=44
+        row.gravity=Gravity.CENTER_VERTICAL or if(mirrorScene)Gravity.RIGHT else Gravity.LEFT
+        row.addOnLayoutChangeListener { v,_,t,_,b,_,ot,_,ob ->
+            if(b-t!=ob-ot){
+                val scale=(b-t).toFloat()/h
+                v.setPadding((74*scale).toInt(),0,(startInset*scale).toInt(),0)
+            }
+        }
+        val image=ImageView(s.context).apply {
+            tag="atlas-channel-logo-${entry.id}"
+            background=shape(panel,10f,line)
+            scaleType=ImageView.ScaleType.FIT_CENTER
+            isFocusable=false;isClickable=false
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            addOnLayoutChangeListener { v,_,t,_,b,_,ot,_,ob ->
+                if(b-t!=ob-ot){val inset=(b-t)/7;v.setPadding(inset,inset,inset,inset)}
+            }
+        }
+        s.put(image,if(mirrorScene)x+w-size-14 else x+14,y+(h-size)/2,size,size)
+        return image
+    }
     fun poster(s:Stage,kind:String,index:Int,x:Int,y:Int,w:Int,h:Int){
         s.put(Poster(s.context,index,kind=="series"),x,y,w,h)
     }
@@ -95,11 +118,19 @@ internal object Atlas {
             c.restore()
         }
     }
-    fun heading(s:Stage,title:String,subtitle:String) {
+    fun heading(s:Stage,title:String,subtitle:String,leftFirst:Boolean=false) {
+        if(leftFirst){
+            chip(s,"ATLAS",1653,47,140,43)
+            label(s,"UNIVERSE",1373,44,256,49,30f,fg,true)
+            label(s,title,130,28,930,86,63f,fg,true,false)
+            label(s,subtitle,130,111,1060,37,26f,muted,right=false)
+            block(s,54,158,1812,2,line)
+            return
+        }
         chip(s,"ATLAS",127,47,140,43)
         label(s,"UNIVERSE",291,44,256,49,30f,fg,true,false)
-        label(s,title,860,28,1006,86,63f,fg,true)
-        label(s,subtitle,730,111,1136,37,26f,muted)
+        label(s,title,860,28,1006,86,63f,fg,true).tag="atlas-heading"
+        label(s,subtitle,730,111,1136,37,26f,muted).tag="atlas-heading"
         block(s,54,158,1812,2,line)
     }
     fun vertical(rows:List<View>) = rows.forEachIndexed { i,v ->
@@ -109,7 +140,7 @@ internal object Atlas {
     fun home(screen:UniverseScreen,s:Stage,index:Int,go:(Int)->Unit) {
         heading(s,"الرئيسية", "تجربة أطلس  /  مساحة مشاهدتك")
         s.put(ImageView(s.context).apply {
-            setImageResource(R.drawable.atlas_orbit);scaleType=ImageView.ScaleType.FIT_XY
+            setImageResource(R.drawable.atlas_orbit);scaleType=ImageView.ScaleType.FIT_XY;scaleX=-1f
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
         },54,205,1074,791)
         chip(s,"ATLAS  /  01",101,247,180,43)
@@ -127,11 +158,12 @@ internal object Atlas {
             val y=280+i*117
             val v=row(s,n,1170,y,696,97,38f){go(i)}
             val iv=ImageView(s.context).apply {setImageResource(icons[i]);importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO}
-            s.put(iv,1203,y+28,40,40)
+            s.put(iv,1801,y+28,40,40)
+            v.addOnLayoutChangeListener { view,_,t,_,b,_,ot,_,ob -> if(b-t!=ob-ot)view.setPadding((b-t)*94/97,0,(b-t)/4,0) }
             iv.setColorFilter(if(v.hasFocus())ink else mint)
             v.setOnFocusChangeListener{_,f->iv.setColorFilter(if(f)ink else mint)}
             v
         }
-        vertical(rows);rows[index.coerceIn(rows.indices)].requestFocus()
+        vertical(rows);s.mirrorAtlasScene();rows[index.coerceIn(rows.indices)].requestFocus()
     }
 }

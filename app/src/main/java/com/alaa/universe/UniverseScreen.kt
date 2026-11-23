@@ -215,7 +215,8 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         themes.forEachIndexed{i,v->v.nextFocusLeftId=tools[i.coerceAtMost(tools.lastIndex)].id}
         tools.forEachIndexed{i,v->v.nextFocusRightId=themes[i].id}
         tools.first().nextFocusUpId=back.id;themes.first().nextFocusUpId=back.id
-        back.nextFocusDownId=tools.first().id;back.nextFocusRightId=themes.first().id
+        stage.mirrorAtlasScene()
+        back.nextFocusDownId=themes.first().id;back.nextFocusRightId=tools.first().id
         focus(themes.first())
     }
     private fun daysLeft()=provider.snapshot?.let{it.expires?.let{_->it.daysLeft(System.currentTimeMillis()).toString()}?:"Unlimited / unknown"}?:"—"

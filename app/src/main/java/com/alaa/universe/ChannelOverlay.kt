@@ -7,7 +7,8 @@ import android.widget.*
 /** Bounded current-category window. Never rebuilds or downloads the provider list. */
 class ChannelOverlay(context:Context,private val channels:List<MediaEntry>,playing:String,
                      private val accent:Int,private val choose:(MediaEntry)->Unit,
-                     private val close:()->Unit):FrameLayout(context) {
+                     private val close:()->Unit,
+                     private val atlasLogo:((MediaEntry,ImageView)->Unit)?=null):FrameLayout(context) {
     private val stage=Stage(context).apply{transparent=true}
     private var at=channels.indexOfFirst{it.id==playing}.coerceAtLeast(0)
     private var releasedKey:Int?=null
@@ -20,9 +21,14 @@ class ChannelOverlay(context:Context,private val channels:List<MediaEntry>,playi
         val start=(at-4).coerceIn(0,(channels.size-9).coerceAtLeast(0))
         stage.swipe={_,_,_,dy->at=(at+if(dy<0)9 else -9).coerceIn(0,channels.lastIndex.coerceAtLeast(0));render()}
         BrowseIndex.page(channels,start,9).forEachIndexed{i,e->
-            val row=Harak.button(stage,e.name,28,126+i*98,602,86,26f){choose(e)}
-            row.contentDescription="Channel ${e.name}"
-            if(i+start==at){row.background=Harak.box(focus=true);row.requestFocus();back.nextFocusDownId=row.id;row.nextFocusUpId=back.id}
+            val y=126+i*98
+            val row=if(atlasLogo!=null) {
+                Atlas.row(stage,e.name,28,y,602,86,26f){choose(e)}.also {
+                    atlasLogo.invoke(e,Atlas.channelBadge(stage,it,e,28,y,602,86,mirrorScene=false))
+                }
+            } else Harak.button(stage,e.name,28,y,602,86,26f){choose(e)}
+            row.contentDescription=if(atlasLogo==null)"Channel ${e.name}" else e.name
+            if(i+start==at){if(atlasLogo==null)row.background=Harak.box(focus=true);row.requestFocus();back.nextFocusDownId=row.id;row.nextFocusUpId=back.id}
         }
     }
     fun key(e:KeyEvent):Boolean {

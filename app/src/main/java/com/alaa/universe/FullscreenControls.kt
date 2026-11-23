@@ -24,6 +24,9 @@ class FullscreenControls(
     private var attached=false
     val live=item.kind=="live"
     private val harak=accent==Harak.GOLD
+    private val atlas=accent==Atlas.mint
+    private fun copy(ar:String,en:String)=if(atlas)ar else en
+    private fun leadingControl()=if(atlas)buttons.drop(1).firstOrNull{it.isFocusable}?:pause else pause
     var openChannels:(()->Unit)?=null
     private lateinit var pause:Control
     private lateinit var heart:Control
@@ -37,19 +40,19 @@ class FullscreenControls(
         layoutDirection=View.LAYOUT_DIRECTION_LTR
         addView(stage,LayoutParams(-1,-1))
         stage.put(View(context).apply{background=GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,intArrayOf(0xaa000000.toInt(),0x00000000,0x00000000,0xee000000.toInt()))},0,0,1920,1080)
-        val back=control("Back","back",24,24,74){leave()}
+        val back=control(copy("رجوع","Back"),"back",24,24,74){leave()}
         stage.put(View(context).apply{background=rounded(0xad121820.toInt(),22f)},130,28,1120,108)
         stage.put(TextView(context).apply{text=item.name.trim().split(Regex("\\s+")).take(2).joinToString(""){it.take(1)}.uppercase();gravity=Gravity.CENTER;setTextColor(Color.WHITE);background=rounded(0x66323b45,14f)},146,42,78,78,28f)
         val image=ImageView(context).apply{scaleType=ImageView.ScaleType.FIT_CENTER;clipToOutline=true;background=rounded(Color.TRANSPARENT,12f)}
         stage.put(image,146,42,78,78);artwork(image)
         label(item.name,244,43,978,43,33f).setTypeface(null,Typeface.BOLD)
         label(subtitle,244,91,978,28,23f).setTextColor(0xffc4cbd3.toInt())
-        label(if(live)"LIVE" else if(item.kind=="episode")"EPISODE" else "MOVIE",1725,44,135,42,22f).apply{gravity=Gravity.CENTER;background=rounded(accent,22f);setTypeface(null,Typeface.BOLD)}
-        elapsed=label(if(live)"ON AIR" else "Elapsed",90,888,155,28,21f).apply{setTextColor(0xffbcc3cb.toInt())}
-        val time=label(if(live)"● LIVE" else "00:00",90,921,170,40,30f)
+        label(if(live)copy("مباشر","LIVE") else if(item.kind=="episode")copy("حلقة","EPISODE") else copy("فيلم","MOVIE"),1725,44,135,42,22f).apply{gravity=Gravity.CENTER;background=rounded(accent,22f);setTypeface(null,Typeface.BOLD)}
+        elapsed=label(if(live)copy("على الهواء","ON AIR") else copy("الوقت المنقضي","Elapsed"),90,888,155,28,21f).apply{setTextColor(0xffbcc3cb.toInt())}
+        val time=label(if(live)copy("● مباشر","● LIVE") else "00:00",90,921,170,40,30f)
         time.tag="elapsed-time"
         progress=Progress(context,accent).apply{
-            isFocusable=!live;isClickable=!live;contentDescription="Seek position"
+            isFocusable=!live;isClickable=!live;contentDescription=copy("موضع التشغيل","Seek position")
             setOnFocusChangeListener{_,focused->invalidate();if(focused)show()}
             setOnKeyListener{_,key,e->
                 if(e.action==KeyEvent.ACTION_DOWN && (key==21 || key==22)){if(key==21)session.player?.seekBack() else session.player?.seekForward();show();update();true}else false
@@ -58,13 +61,13 @@ class FullscreenControls(
         stage.put(progress,278,884,1394,35)
         percent=label("",278,930,200,30,22f)
         total=label("",1370,930,302,30,22f).apply{gravity=Gravity.RIGHT}
-        label(if(live)"Broadcast" else "Time left",1730,873,160,30,21f).setTextColor(0xffbcc3cb.toInt())
-        remaining=label(if(live)"Real time" else "—",1730,914,170,44,28f)
+        label(if(live)copy("البث","Broadcast") else copy("الوقت المتبقي","Time left"),1730,873,160,30,21f).setTextColor(0xffbcc3cb.toInt())
+        remaining=label(if(live)copy("الآن","Real time") else "—",1730,914,170,44,28f)
         val specs=listOf("Previous" to "prev","Rewind 10 seconds" to "rewind","Play or pause" to "pause","Forward 10 seconds" to "forward","Next" to "next","Audio" to "audio","Subtitles" to "subs","Favorite" to "heart")
         specs.forEachIndexed{i,(name,icon)->
             val size=if(i==2)92 else 74
             val x=listOf(608,696,784,890,978,1066,1154,1242)[i]
-            val b=control(name,icon,x,if(i==2)969 else 978,size){
+            val b=control(if(atlas)listOf("السابق","ترجيع ١٠ ثوانٍ","تشغيل أو إيقاف مؤقت","تقديم ١٠ ثوانٍ","التالي","الصوت","الترجمة","المفضلة")[i] else name,icon,x,if(i==2)969 else 978,size){
                 when(i){
                     0->previous()
                     1->session.player?.seekBack()
@@ -144,7 +147,7 @@ class FullscreenControls(
     }
     private fun rounded(color:Int,r:Float)=GradientDrawable().apply{setColor(color);cornerRadius=r}
     private fun label(s:String,x:Int,y:Int,w:Int,h:Int,size:Float)=TextView(context).apply{
-        text=s;setTextColor(if(harak)Harak.FG else Color.WHITE);if(harak)typeface=Harak.font(context);gravity=Gravity.CENTER_VERTICAL;includeFontPadding=false;maxLines=1
+        text=s;setTextColor(if(harak)Harak.FG else Color.WHITE);if(harak)typeface=Harak.font(context);gravity=Gravity.LEFT or Gravity.CENTER_VERTICAL;textDirection=View.TEXT_DIRECTION_FIRST_STRONG;includeFontPadding=false;maxLines=1
         ellipsize=android.text.TextUtils.TruncateAt.END
         stage.put(this,x,y,w,h,size)
     }
@@ -165,10 +168,10 @@ class FullscreenControls(
     fun reveal():Boolean {
         val hidden=visibility!=View.VISIBLE
         show()
-        if(hidden || findFocus()==null)pause.requestFocus()
+        if(hidden || findFocus()==null)leadingControl().requestFocus()
         return hidden
     }
-    fun initialFocus(){show();if(!PhoneInput.enabled(context))pause.requestFocus()}
+    fun initialFocus(){show();if(!PhoneInput.enabled(context))leadingControl().requestFocus()}
     fun update(){
         val p=session.player
         val duration=p?.duration?.takeIf{it>0 && it!=C.TIME_UNSET}?:0L
@@ -179,11 +182,11 @@ class FullscreenControls(
         progress.isEnabled=known && !live
         progress.isFocusable=known && !live
         if(!(harak&&live))buttons.drop(1).forEach{it.nextFocusUpId=if(known && !live)progress.id else buttons.first().id}
-        if(!(harak&&live))buttons.first().nextFocusDownId=if(known && !live)progress.id else pause.id
-        (stage.findViewWithTag<TextView>("elapsed-time")).text=if(live)"● LIVE" else clock(position)
-        percent.text=if(live)"Live broadcast" else if(known)"${(progress.fraction*100).toInt()}%" else if(harak)"المدة غير متاحة" else "Duration unavailable"
-        total.text=if(!live&&known)(if(harak)"المدة  " else "Total  ")+clock(duration) else ""
-        remaining.text=if(live)"Real time" else if(known)"−${clock((duration-position).coerceAtLeast(0))}" else "—"
+        if(!(harak&&live))buttons.first().nextFocusDownId=if(known && !live)progress.id else leadingControl().id
+        (stage.findViewWithTag<TextView>("elapsed-time")).text=if(live)copy("● مباشر","● LIVE") else clock(position)
+        percent.text=if(live)copy("بث مباشر","Live broadcast") else if(known)"${(progress.fraction*100).toInt()}%" else if(harak||atlas)"المدة غير متاحة" else "Duration unavailable"
+        total.text=if(!live&&known)(if(harak||atlas)"المدة  " else "Total  ")+clock(duration) else ""
+        remaining.text=if(live)copy("الآن","Real time") else if(known)"−${clock((duration-position).coerceAtLeast(0))}" else "—"
         if(!(harak&&live))pause.icon=if(p?.playWhenReady==false)"play" else "pause";pause.invalidate()
     }
     override fun onAttachedToWindow(){super.onAttachedToWindow();attached=true;main.post(tick);show()}
