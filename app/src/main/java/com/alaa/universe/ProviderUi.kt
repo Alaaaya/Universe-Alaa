@@ -935,13 +935,15 @@ class ProviderUi(private val screen:UniverseScreen) {
                 if(!favorites.add(identity(favoriteItem)))favorites.remove(identity(favoriteItem))
                 saveState();identity(favoriteItem) in favorites
             },artwork={image->
-                val art=item.icon.ifBlank{parent?.icon.orEmpty()}
-                val uri=runCatching{ProviderRepository.validatedUrl(art,imageHttpAllowed)}.getOrNull()
-                if(uri!=null && (testMode || repository.isVisible(item))){
-                    pictures.add(image)
-                    com.bumptech.glide.Glide.with(context).asBitmap().load(uri.toASCIIString())
-                        .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.RESOURCE).skipMemoryCache(false)
-                        .override(96,96).timeout(15000).into(image)
+                if(atlas && item.kind=="live") bindAtlasChannelLogo(item,image) else {
+                    val art=item.icon.ifBlank{parent?.icon.orEmpty()}
+                    val uri=runCatching{ProviderRepository.validatedUrl(art,imageHttpAllowed)}.getOrNull()
+                    if(uri!=null && (testMode || repository.isVisible(item))){
+                        pictures.add(image)
+                        com.bumptech.glide.Glide.with(context).asBitmap().load(uri.toASCIIString())
+                            .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.RESOURCE).skipMemoryCache(false)
+                            .override(96,96).timeout(15000).into(image)
+                    }
                 }
             })
         if(PhoneInput.enabled(context)){

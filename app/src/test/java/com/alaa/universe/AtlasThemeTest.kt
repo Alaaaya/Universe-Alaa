@@ -142,4 +142,74 @@ class AtlasThemeTest {
         s.home();layout(s,960,540);tap(220f,332f);layout(s,960,540);assertEquals("themes",s.page)
         c.pause().stop().destroy()
     }
+    private fun openFixturePlayer(s:UniverseScreen) : FullscreenControls {
+        s.categories();layout(s)
+        val item=MediaEntry("live-1","الملاعب","1","live")
+        val session=s.provider.playback
+        set(session,"player",androidx.media3.exoplayer.ExoPlayer.Builder(s.context).build())
+        set(session,"entry",item)
+        s.provider.javaClass.getDeclaredMethod("fullscreen").apply{isAccessible=true}.invoke(s.provider)
+        layout(s)
+        return views(s).filterIsInstance<FullscreenControls>().single()
+    }
+    @Test fun fullscreenAtlasDockKeepsChannelFavoriteQualityAndTransportOnRemote() {
+        val c=Robolectric.buildActivity(HomeActivity::class.java).create();val a=c.get();val s=a.screen
+        s.provider.testMode=true;c.start().resume().visible();load(s);s.theme=Atlas.ID
+        val controls=openFixturePlayer(s)
+        val video=views(s).filterIsInstance<PlayerView>().single()
+        assertEquals(1920,video.width);assertEquals(1080,video.height)
+        val dock=s.findViewWithTag<View>("atlas-live-dock")
+        val logo=s.findViewWithTag<ImageView>("atlas-player-logo")
+        assertTrue(dock.top>video.height*3/4);assertNotNull(logo.drawable)
+        val channels=s.findViewWithTag<View>("atlas-player-channels")
+        val favorite=s.findViewWithTag<FullscreenControls.Control>("atlas-player-favorite")
+        val quality=s.findViewWithTag<View>("atlas-player-quality")
+        assertTrue(logo.left < channels.left && channels.left < favorite.left && favorite.left < quality.left)
+        assertSame(channels,s.findFocus())
+        // Render native controls over a known still instead of implying live playback.
+        val still=ImageView(a).apply{setImageResource(R.drawable.atlas_orbit);scaleType=ImageView.ScaleType.CENTER_CROP}
+        val scene=video.parent as Stage
+        scene.put(still,0,0,1920,1080);controls.bringToFront()
+        shot(s,"07-fullscreen-live");scene.removeView(still)
+        key(a,KeyEvent.KEYCODE_DPAD_CENTER);layout(s)
+        assertEquals(View.INVISIBLE,controls.visibility)
+        assertEquals(1,views(s).filterIsInstance<ChannelOverlay>().size)
+        assertTrue(s.back());controls.reveal();assertSame(channels,s.findFocus())
+        key(a,KeyEvent.KEYCODE_DPAD_RIGHT);assertSame(favorite,s.findFocus())
+        key(a,KeyEvent.KEYCODE_DPAD_CENTER);assertTrue(favorite.selectedIcon)
+        key(a,KeyEvent.KEYCODE_DPAD_RIGHT);assertSame(quality,s.findFocus())
+        key(a,KeyEvent.KEYCODE_DPAD_CENTER)
+        val qualityDialog=org.robolectric.shadows.ShadowDialog.getLatestDialog()
+        assertNotNull(qualityDialog);assertTrue(qualityDialog.isShowing)
+        assertTrue(views(qualityDialog.window!!.decorView).filterIsInstance<TextView>().any{it.text.toString()=="Quality"})
+        qualityDialog.dismiss();layout(s)
+        quality.requestFocus();key(a,KeyEvent.KEYCODE_DPAD_RIGHT)
+        key(a,KeyEvent.KEYCODE_DPAD_CENTER);layout(s)
+        assertEquals("السابق",s.findFocus()?.contentDescription)
+        controls.conceal();controls.reveal()
+        assertSame(channels,s.findFocus())
+        c.pause().stop().destroy()
+    }
+    @Test @Config(qualifiers="w960dp-h540dp-land-mdpi") fun fullscreenAtlasDockAcceptsPhoneTapAndReveal() {
+        val c=Robolectric.buildActivity(HomeActivity::class.java).create();val a=c.get();val s=a.screen
+        shadowOf(a.packageManager).setSystemFeature("android.hardware.touchscreen",true)
+        s.provider.testMode=true;c.start().resume().visible();load(s);s.theme=Atlas.ID
+        val controls=openFixturePlayer(s);layout(s,960,540)
+        fun tap(x:Float,y:Float){
+            listOf(MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP).forEachIndexed{i,action->
+                val e=MotionEvent.obtain(100,100L+i*60,action,x,y,0);s.dispatchTouchEvent(e);e.recycle()
+            }
+            shadowOf(Looper.getMainLooper()).idle()
+        }
+        controls.conceal();tap(450f,240f);assertEquals(View.VISIBLE,controls.visibility)
+        val favorite=s.findViewWithTag<FullscreenControls.Control>("atlas-player-favorite")
+        tap((favorite.left+favorite.right)/2f,(favorite.top+favorite.bottom)/2f)
+        assertTrue(favorite.selectedIcon)
+        val channels=s.findViewWithTag<View>("atlas-player-channels")
+        tap((channels.left+channels.right)/2f,(channels.top+channels.bottom)/2f)
+        assertEquals(View.INVISIBLE,controls.visibility)
+        assertEquals(1,views(s).filterIsInstance<ChannelOverlay>().size)
+        c.pause().stop().destroy()
+    }
+
 }

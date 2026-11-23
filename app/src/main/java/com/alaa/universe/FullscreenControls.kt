@@ -8,6 +8,7 @@ import android.os.Looper
 import android.view.*
 import android.widget.*
 import androidx.media3.common.C
+import androidx.media3.common.Player
 
 /** Native TV controls on a transparent design surface. Video remains the only backdrop. */
 class FullscreenControls(
@@ -26,7 +27,9 @@ class FullscreenControls(
     private val harak=accent==Harak.GOLD
     private val atlas=accent==Atlas.mint
     private fun copy(ar:String,en:String)=if(atlas)ar else en
-    private fun leadingControl()=if(atlas)buttons.drop(1).firstOrNull{it.isFocusable}?:pause else pause
+    private fun leadingControl()=atlasChannels ?: if(atlas)buttons.drop(1).firstOrNull{it.isFocusable}?:pause else pause
+    private var atlasChannels:Control?=null
+    private var atlasState:TextView?=null
     var openChannels:(()->Unit)?=null
     private lateinit var pause:Control
     private lateinit var heart:Control
@@ -36,6 +39,8 @@ class FullscreenControls(
     private lateinit var percent:TextView
     private lateinit var progress:Progress
     private var isFavorite=favorite
+    private var atlasTransportPanel:View?=null
+    private var atlasTransport=listOf<Control>()
     init {
         layoutDirection=View.LAYOUT_DIRECTION_LTR
         addView(stage,LayoutParams(-1,-1))
@@ -95,7 +100,83 @@ class FullscreenControls(
         progress.nextFocusDownId=pause.id;progress.nextFocusUpId=back.id;back.nextFocusDownId=if(live)pause.id else progress.id
         progress.nextFocusLeftId=progress.id;progress.nextFocusRightId=progress.id
         if(harak)applyHarak(subtitle)
+        if(atlas&&live)applyAtlasLive(back,image,subtitle)
         update()
+    }
+
+    /** Atlas live uses a single lower dock over the video; secondary transport stays available. */
+    private fun applyAtlasLive(back:Control,image:ImageView,subtitle:String) {
+        val original=(0 until stage.childCount).map(stage::getChildAt)
+        original.forEach { if(it!==back && it!==image) {it.visibility=View.GONE;it.isFocusable=false} }
+        stage.put(View(context).apply {
+            background=GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.TRANSPARENT,Color.TRANSPARENT,0x8f070713.toInt()))
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        },0,0,1920,1080)
+        val glass=GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+            intArrayOf(0xf01b1734.toInt(),0xeb101427.toInt(),0xf020183a.toInt())).apply {
+                cornerRadius=32f;setStroke(2,0xff604782.toInt())
+            }
+        stage.put(View(context).apply{background=glass;tag="atlas-live-dock"},48,816,1824,218)
+        Atlas.block(stage,83,840,108,4,Atlas.mint,2f)
+        Atlas.block(stage,86,868,125,130,0xff292044.toInt(),23f,0xff634483.toInt())
+        stage.place(image,101,881,95,104)
+        image.tag="atlas-player-logo";image.bringToFront()
+        Atlas.label(stage,item.name,241,874,565,58,40f,bold=true,right=false)
+        Atlas.label(stage,subtitle,241,941,565,42,25f,color=Atlas.muted,right=false)
+        Atlas.block(stage,815,865,2,130,0xff58426f.toInt(),1f)
+        Atlas.chip(stage,"●  مباشر",850,879,163,43,color=0xffffb0ca.toInt(),bg=0xff483046.toInt())
+        atlasState=Atlas.label(stage,"قناة مباشرة",851,939,190,41,22f,color=Atlas.muted,right=false)
+        Atlas.block(stage,1054,865,2,130,0xff58426f.toInt(),1f)
+
+        val channels=control("القنوات","channels",1090,858,124){openChannels?.invoke()}.also{
+            it.tag="atlas-player-channels";atlasChannels=it
+        }
+        // Keep the original favorite state and action, and add a direct video-track control.
+        heart.visibility=View.VISIBLE;heart.isFocusable=true;heart.isFocusableInTouchMode=!PhoneInput.enabled(context);heart.alpha=1f
+        stage.place(heart,1274,858,159,134);heart.bringToFront();heart.tag="atlas-player-favorite"
+        val quality=control("الجودة","quality",1458,858,124){show();session.tracks(C.TRACK_TYPE_VIDEO)}.apply{tag="atlas-player-quality"}
+        val more=control("خيارات التشغيل","more",1642,858,124){toggleAtlasTransport()}.apply{tag="atlas-player-more"}
+        val row=listOf(channels,heart,quality,more)
+        row.forEachIndexed{i,v->
+            stage.place(v,1090+i*184,858,159,134)
+            v.dockLabel=listOf("القنوات","المفضلة","الجودة","خيارات")[i]
+            v.nextFocusLeftId=row.getOrNull(i-1)?.id?:v.id
+            v.nextFocusRightId=row.getOrNull(i+1)?.id?:v.id
+            v.nextFocusDownId=v.id;v.nextFocusUpId=back.id
+        }
+        back.bringToFront();back.nextFocusDownId=channels.id
+        val panel=View(context).apply{background=Atlas.shape(0xf21b1734.toInt(),26f,0xff604782.toInt(),2);visibility=View.GONE}
+        stage.put(panel,774,656,1074,137);atlasTransportPanel=panel
+        val transport=original.filterIsInstance<Control>().filter{it!==back && it!==heart && it.isEnabled}
+        atlasTransport=transport
+        transport.forEachIndexed{i,v->
+            v.bringToFront();stage.place(v,798+i*207,670,195,108)
+            v.dockLabel=listOf("القناة السابقة","تشغيل / إيقاف","القناة التالية","الصوت","الترجمة")[i]
+            v.nextFocusLeftId=transport.getOrNull(i-1)?.id?:v.id
+            v.nextFocusRightId=transport.getOrNull(i+1)?.id?:v.id
+            v.nextFocusUpId=back.id;v.nextFocusDownId=more.id
+        }
+    }
+
+    private fun toggleAtlasTransport(){
+        val panel=atlasTransportPanel?:return
+        setAtlasTransport(panel.visibility!=View.VISIBLE)
+        show()
+    }
+    private fun setAtlasTransport(expanded:Boolean){
+        val panel=atlasTransportPanel?:return
+        val more=stage.findViewWithTag<Control>("atlas-player-more")
+        val restoreFocus=!expanded && atlasTransport.any{it.hasFocus()}
+        panel.visibility=if(expanded)View.VISIBLE else View.GONE
+        atlasTransport.forEach {v->
+            v.visibility=panel.visibility
+            v.isFocusable=expanded
+            v.isFocusableInTouchMode=expanded&&!PhoneInput.enabled(context)
+        }
+        more?.nextFocusUpId=if(expanded)atlasTransport.last().id else buttons.first().id
+        if(restoreFocus)more?.requestFocus()
+        if(expanded && more?.hasFocus()==true)atlasTransport.first().requestFocus()
     }
 
     private fun applyHarak(subtitle:String) {
@@ -160,6 +241,7 @@ class FullscreenControls(
     fun show(){visibility=View.VISIBLE;main.removeCallbacks(hide);if(attached)main.postDelayed(hide,4000)}
     fun conceal(){
         main.removeCallbacks(hide)
+        setAtlasTransport(false)
         visibility=View.INVISIBLE
         clearFocus()
         // Keep a real focus target when the overlay disappears, not PlayerView.
@@ -181,12 +263,23 @@ class FullscreenControls(
         progress.visibility=if(live)View.INVISIBLE else View.VISIBLE
         progress.isEnabled=known && !live
         progress.isFocusable=known && !live
-        if(!(harak&&live))buttons.drop(1).forEach{it.nextFocusUpId=if(known && !live)progress.id else buttons.first().id}
+        if(!((harak||atlas)&&live))buttons.drop(1).forEach{it.nextFocusUpId=if(known && !live)progress.id else buttons.first().id}
         if(!(harak&&live))buttons.first().nextFocusDownId=if(known && !live)progress.id else leadingControl().id
         (stage.findViewWithTag<TextView>("elapsed-time")).text=if(live)copy("● مباشر","● LIVE") else clock(position)
         percent.text=if(live)copy("بث مباشر","Live broadcast") else if(known)"${(progress.fraction*100).toInt()}%" else if(harak||atlas)"المدة غير متاحة" else "Duration unavailable"
         total.text=if(!live&&known)(if(harak||atlas)"المدة  " else "Total  ")+clock(duration) else ""
         remaining.text=if(live)copy("الآن","Real time") else if(known)"−${clock((duration-position).coerceAtLeast(0))}" else "—"
+        atlasState?.let { state ->
+            val value=when {
+                p?.playerError!=null -> "البث غير متاح"
+                p?.playbackState==Player.STATE_BUFFERING -> "جارٍ التحميل"
+                p?.playWhenReady==false -> "متوقف مؤقتًا"
+                p?.playbackState==Player.STATE_ENDED -> "انتهى البث"
+                p?.isPlaying==true -> "على الهواء الآن"
+                else -> "قناة مباشرة"
+            }
+            if(state.text!=value)state.text=value
+        }
         if(!(harak&&live))pause.icon=if(p?.playWhenReady==false)"play" else "pause";pause.invalidate()
     }
     override fun onAttachedToWindow(){super.onAttachedToWindow();attached=true;main.post(tick);show()}
@@ -202,20 +295,36 @@ class FullscreenControls(
     }
     class Control(context:Context,var icon:String,private val accent:Int):View(context){
         var primary=false
+        var dockLabel:String?=null
+        private var dockLayout:android.text.StaticLayout?=null
+        private var dockLayoutText:String?=null
+        private var dockLayoutHeight=0
         var selectedIcon=false;set(v){field=v;invalidate()}
         override fun onDraw(c:Canvas){
-            val s=minOf(width,height).toFloat();c.save();c.translate((width-s)/2,(height-s)/2);c.scale(s/80,s/80)
+            val dock=dockLabel
+            val s=if(dock!=null)height*.57f else minOf(width,height).toFloat()
+            if(dock!=null){
+                val focused=hasFocus()||isPressed
+                val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=if(focused)0xffeddaff.toInt() else 0xff292341.toInt()}
+                val r=height*.18f
+                c.drawRoundRect(1f,1f,width-1f,height-1f,r,r,paint)
+                paint.style=Paint.Style.STROKE;paint.strokeWidth=maxOf(1f,height*.018f)
+                paint.color=if(focused)accent else 0xff57426f.toInt()
+                c.drawRoundRect(1f,1f,width-1f,height-1f,r,r,paint)
+            }
+            c.save();c.translate((width-s)/2,if(dock!=null)height*.06f else (height-s)/2);c.scale(s/80,s/80)
             val themed=accent==Harak.GOLD
             val goldFill=themed&&(primary||hasFocus())
             val p=Paint(3).apply{color=if(primary)accent else if(themed)0xff201d26.toInt() else 0xb5222932.toInt()}
             if(goldFill)p.shader=LinearGradient(8f,8f,72f,72f,intArrayOf(0xfffdeeb5.toInt(),0xffb98b2d.toInt()),null,Shader.TileMode.CLAMP)
-            c.drawCircle(40f,40f,36f,p);p.shader=null
-            if(hasFocus()){p.color=if(themed)Harak.GOLD else Color.WHITE;p.style=Paint.Style.STROKE;p.strokeWidth=3f;c.drawCircle(40f,40f,39f,p)}
-            p.color=if(goldFill)Harak.INK else if(selectedIcon||themed)accent else Color.WHITE;p.style=Paint.Style.STROKE;p.strokeWidth=2.8f;p.strokeJoin=Paint.Join.ROUND;p.strokeCap=Paint.Cap.ROUND
+            if(dock==null)c.drawCircle(40f,40f,36f,p);p.shader=null
+            if(dock==null&&hasFocus()){p.color=if(themed)Harak.GOLD else Color.WHITE;p.style=Paint.Style.STROKE;p.strokeWidth=3f;c.drawCircle(40f,40f,39f,p)}
+            p.color=if(dock!=null) { if(hasFocus()||isPressed)Atlas.ink else accent } else if(goldFill)Harak.INK else if(selectedIcon||themed)accent else Color.WHITE;p.style=Paint.Style.STROKE;p.strokeWidth=2.8f;p.strokeJoin=Paint.Join.ROUND;p.strokeCap=Paint.Cap.ROUND
             fun line(x:Float,y:Float,a:Float,b:Float)=c.drawLine(x,y,a,b,p)
             fun triangle(x:Float,reverse:Boolean=false){val d=if(reverse)-1 else 1;val path=Path().apply{moveTo(x-6*d,29f);lineTo(x+9*d,40f);lineTo(x-6*d,51f);close()};p.style=Paint.Style.FILL;c.drawPath(path,p);p.style=Paint.Style.STROKE}
             when(icon){
                 "channels"->{c.drawRoundRect(22f,24f,58f,56f,4f,4f,p);line(27f,34f,53f,34f);line(27f,44f,53f,44f)}
+                "more"->{p.style=Paint.Style.FILL;for(x in listOf(26f,40f,54f))c.drawCircle(x,40f,3.1f,p)}
                 "quality"->{c.drawCircle(40f,40f,13f,p);for(i in 0..7){c.save();c.rotate(i*45f,40f,40f);line(40f,19f,40f,25f);c.restore()}}
                 "pause"->{p.style=Paint.Style.FILL;c.drawRoundRect(30f,27f,36f,53f,1f,1f,p);c.drawRoundRect(44f,27f,50f,53f,1f,1f,p)}
                 "play"->triangle(40f)
@@ -228,6 +337,21 @@ class FullscreenControls(
                 "subs"->{c.drawRoundRect(23f,28f,57f,52f,4f,4f,p);line(29f,37f,35f,37f);line(42f,37f,51f,37f);line(29f,44f,42f,44f);line(47f,44f,51f,44f)}
                 "heart"->{val path=Path().apply{moveTo(40f,54f);cubicTo(12f,35f,29f,18f,40f,31f);cubicTo(51f,18f,68f,35f,40f,54f)};if(selectedIcon)p.style=Paint.Style.FILL;c.drawPath(path,p)}
             };c.restore()
+            if(dock!=null){
+                if(dockLayout?.width!=width || dockLayoutHeight!=height || dockLayoutText!=dock){
+                    val labelPaint=android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply{
+                        textSize=height*.18f;typeface=Typeface.DEFAULT_BOLD
+                    }
+                    dockLayout=android.text.StaticLayout.Builder.obtain(dock,0,dock.length,labelPaint,width)
+                        .setTextDirection(android.text.TextDirectionHeuristics.FIRSTSTRONG_RTL)
+                        .setAlignment(android.text.Layout.Alignment.ALIGN_CENTER).setIncludePad(false).build()
+                    dockLayoutHeight=height;dockLayoutText=dock
+                }
+                dockLayout?.let { layout ->
+                    layout.paint.color=if(hasFocus()||isPressed)Atlas.ink else Atlas.fg
+                    c.save();c.translate(0f,height*.71f);layout.draw(c);c.restore()
+                }
+            }
         }
     }
 }
