@@ -4,6 +4,14 @@ android {
  compileSdk = 36
  defaultConfig { applicationId = "com.alaa.universe"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"; minSdk = 23; targetSdk = 36; versionCode = 15; versionName = "0.4.11" }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+ buildTypes {
+  create("atlasPreview") {
+   initWith(getByName("debug"))
+   applicationIdSuffix = ".atlaspreview"
+   versionNameSuffix = "-atlas-preview"
+   matchingFallbacks += listOf("debug")
+  }
+ }
  kotlinOptions { jvmTarget = "17" }
  testOptions { unitTests.isIncludeAndroidResources = true; unitTests.all { it.maxHeapSize = "512m"; it.systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2") } }
 }

@@ -9,7 +9,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 class UniverseScreen(context:Context): FrameLayout(context) {
-    var theme=context.getSharedPreferences("appearance",0).getString("theme","red")!!
+    var theme=context.getSharedPreferences("appearance",0).getString("theme",if(context.packageName.endsWith(".atlaspreview")) Atlas.ID else "red")!!
     var previewFixtures=false
     val provider by lazy { ProviderUi(this) }
     var homeTheme=context.getSharedPreferences("appearance",0).getString("home","classic")!!
@@ -31,7 +31,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
     private val groups=mutableListOf("All Channels","Favorites","Recently Viewed","AR | Alaa","AR | Cinema","AR | Sports","AR | Kids","DE | Germany","World","Documentaries")
     private val names=listOf("ALAA - ONE","ALAA - CINEMA","ALAA - WORLD","ALAA - TWO","ALAA - KIDS","ALAA - FIVE","ALAA - MAX","ALAA - CULTURE","ALAA - DRAMA","ALAA - ACTION","ALAA - MUSIC","ALAA - TRAVEL","ALAA - NATURE","ALAA - CLASSIC","ALAA - NEWS","ALAA - FAMILY")
     private lateinit var stage:Stage
-    private val accent get()=when(theme){"harak"->Harak.GOLD;"red"->0xffe50914.toInt();"gold"->0xffd8b602.toInt();else->0xff518df4.toInt()}
+    private val accent get()=when(theme){Atlas.ID->Atlas.mint;"harak"->Harak.GOLD;"red"->0xffe50914.toInt();"gold"->0xffd8b602.toInt();else->0xff518df4.toInt()}
     private val textColor get()=if(theme=="red")Color.WHITE else 0xffe2eaf6.toInt()
     init {layoutDirection=View.LAYOUT_DIRECTION_LTR}
     private fun reset(wave:Boolean=false) {
@@ -68,6 +68,9 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         page="home";drawer=false;fullscreen=false;reset()
         if(homeTheme=="prayer"){prayerHome();return}
         if(theme=="harak"){Harak.home(this,stage);return}
+        if(theme==Atlas.ID){Atlas.home(this,stage,homeIndex){i->
+            homeIndex=i;when(i){0->categories();1->catalogue(false);2->catalogue(true);3->themeDialog();4->provider.loginDialog();5->provider.refresh()}
+        };return}
         text(provider.snapshot?.name?:"Not connected",54,43,250,38,25f,0xff9aaec8.toInt())
         text(clock(),338,43,180,38,25f,0xff9aaec8.toInt())
         val date=if(fixedClock!=null)"28 October 2026" else SimpleDateFormat("dd MMMM yyyy",Locale.getDefault()).format(Date())
@@ -171,19 +174,45 @@ class UniverseScreen(context:Context): FrameLayout(context) {
     fun openThemes()=themeDialog()
     private fun themeDialog() {
         page="themes";reset()
+        if(theme==Atlas.ID){atlasSettings();return}
         text(if(arabic)"المظهر" else "Theme",100,80,1300,100,56f)
-        val labels=listOf("Red","Gold","Blue","Royal Blue","Sunset Prayer","هارك · Noir et Or")
+        val labels=listOf("Red","Gold","Blue","Royal Blue","Sunset Prayer","هارك · Noir et Or","أطلس · Atlas")
         val rows=labels.mapIndexed{i,label->button(label,100,230+i*115,1100,100,40f){
-            if(i==4)homeTheme="prayer" else {homeTheme="classic";theme=if(i==5)"harak" else listOf("red","gold","blue","royal")[i]}
-            context.getSharedPreferences("appearance",0).edit().putString("home",homeTheme).putString("theme",theme).apply();home()
+            selectAppearance(i)
         }}.toMutableList()
         rows.add(button("Check for updates",1240,230,570,100,32f){(context as? HomeActivity)?.updater?.check()})
         chain(rows);focus(rows[if(homeTheme=="prayer")4 else if(theme=="harak")5 else listOf("red","gold","blue","royal").indexOf(theme).coerceAtLeast(0)])
 
     }
+    private fun selectAppearance(i:Int){
+        if(i==4) homeTheme="prayer" else {
+            homeTheme="classic";theme=listOf("red","gold","blue","royal","","harak",Atlas.ID)[i]
+        }
+        context.getSharedPreferences("appearance",0).edit().putString("home",homeTheme).putString("theme",theme).apply();home()
+    }
+    private fun atlasSettings(){
+        val back=BackButton.add(stage,Atlas.mint){back()}
+        Atlas.heading(stage,"الإعدادات","خصّص المظهر وأدر مكتبة المشاهدة")
+        Atlas.label(stage,"المظهر",1020,190,846,58,38f,Atlas.fg,true)
+        Atlas.label(stage,"المصدر والتطبيق",54,190,908,58,38f,Atlas.fg,true)
+        val themes=listOf("أحمر","ذهبي","أزرق","أزرق ملكي","صلاة الغروب","هارك · Noir et Or","أطلس · Atlas").mapIndexed{i,title->
+            Atlas.row(stage,title,1020,267+i*103,846,86,34f,i==6){selectAppearance(i)}
+        }
+        val tools=listOf(
+            Atlas.row(stage,"إدارة مصدر المشاهدة",54,267,908,86,34f){provider.loginDialog()},
+            Atlas.row(stage,"تحديث المكتبة",54,370,908,86,34f){provider.refresh()},
+            Atlas.row(stage,"التحقّق من تحديث التطبيق",54,473,908,86,34f){(context as? HomeActivity)?.updater?.check()}
+        )
+        Atlas.vertical(themes);Atlas.vertical(tools)
+        themes.forEachIndexed{i,v->v.nextFocusLeftId=tools[i.coerceAtMost(tools.lastIndex)].id}
+        tools.forEachIndexed{i,v->v.nextFocusRightId=themes[i].id}
+        tools.first().nextFocusUpId=back.id;themes.first().nextFocusUpId=back.id
+        back.nextFocusDownId=tools.first().id;back.nextFocusRightId=themes.first().id
+        focus(themes.first())
+    }
     private fun daysLeft()=provider.snapshot?.let{it.expires?.let{_->it.daysLeft(System.currentTimeMillis()).toString()}?:"Unlimited / unknown"}?:"—"
     fun categories() {
-        if(!previewFixtures){if(provider.requireConnection()){page="categories";provider.categories()};return}
+        if(!previewFixtures){if(provider.requireConnection()){page=if(theme==Atlas.ID)"live" else "categories";provider.categories()};return}
         page="categories";drawer=true;fullscreen=false;reset(true)
         text(if(arabic)"القنوات" else "Live TV",52,49,800,105,65f)
         icon(R.drawable.ic_search,1450,64,55,55);mark(1560,38,86)
@@ -333,7 +362,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         if(page=="movie-detail"||page=="series-detail"){catalogue(seriesMode);return true}
         if(page=="movies"||page=="series"){home();return true}
         if(page=="themes"){home();return true}
-        if(page=="live"){categories();return true}
+        if(page=="live"){if(theme==Atlas.ID)home() else categories();return true}
         if(page=="categories"){home();return true}
         return false
     }

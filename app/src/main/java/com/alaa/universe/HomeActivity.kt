@@ -17,7 +17,7 @@ class HomeActivity : Activity() {
         setContentView(screen)
         screen.home()
         updater=AppUpdater(this)
-        updater.check(quiet=true)
+        if(!packageName.endsWith(".atlaspreview"))updater.check(quiet=true)
     }
     override fun dispatchKeyEvent(event:android.view.KeyEvent):Boolean {
         // Window dispatch can skip an unfocused content tree after controls auto-hide.

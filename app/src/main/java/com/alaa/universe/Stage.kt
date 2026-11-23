@@ -71,6 +71,7 @@ class Stage(context: Context): ViewGroup(context) {
     override fun onViewRemoved(child:View){super.onViewRemoved(child);slots.remove(child);if(childCount==0)scrollTo(0,0)}
     override fun onDraw(c:Canvas) {
         if(transparent)return
+        if(theme==Atlas.ID){c.drawColor(Atlas.ink);return}
         if(theme=="harak"){c.drawColor(Harak.INK);return}
         if(theme=="red"){c.drawColor(Color.BLACK);return}
         val p=Paint(Paint.ANTI_ALIAS_FLAG)

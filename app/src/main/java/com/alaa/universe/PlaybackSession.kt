@@ -25,6 +25,7 @@ class PlaybackSession(private val context:Context, private val repositoryProvide
     var entry:MediaEntry?=null; private set
     var zap:((Int)->Unit)?=null
     fun attach(target:PlayerView) {
+        if(view===target){if(target.player!==player)target.player=player;return}
         view?.player=null;view=target
         target.player=player
         target.controllerShowTimeoutMs=4000
