@@ -249,7 +249,25 @@ class FullscreenControls(
             setOnClickListener{action()};setOnFocusChangeListener{_,focused->invalidate();if(focused)show()}
         };stage.put(b,x,y,size,size);buttons.add(b);return b
     }
-    fun show(){visibility=View.VISIBLE;main.removeCallbacks(hide);if(attached)main.postDelayed(hide,4000)}
+    private var atlasDrawerOpen=false
+    private var previousDescendantFocusability=FOCUS_BEFORE_DESCENDANTS
+    fun show(){visibility=View.VISIBLE;main.removeCallbacks(hide);if(attached && !atlasDrawerOpen)main.postDelayed(hide,4000)}
+    fun setAtlasDrawerOpen(open:Boolean){
+        if(atlasChannels==null)return
+        atlasDrawerOpen=open
+        atlasChannels?.selectedIcon=open
+        buttons.first().visibility=if(open)View.INVISIBLE else View.VISIBLE
+        if(open){
+            setAtlasTransport(false)
+            previousDescendantFocusability=descendantFocusability
+            descendantFocusability=FOCUS_BLOCK_DESCENDANTS
+            findFocus()?.clearFocus()
+            show()
+        } else {
+            descendantFocusability=previousDescendantFocusability
+            conceal()
+        }
+    }
     fun conceal(){
         main.removeCallbacks(hide)
         setAtlasTransport(false)
@@ -323,7 +341,7 @@ class FullscreenControls(
                 val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0xff242126.toInt()}
                 val centerY=height*.35f
                 c.drawCircle(width/2f,centerY,s*.49f,paint)
-                if(hasFocus()||isPressed){
+                if(hasFocus()||isPressed||(icon=="channels" && selectedIcon)){
                     paint.style=Paint.Style.STROKE;paint.strokeWidth=maxOf(1.5f,height*.022f);paint.color=CINEMA_GOLD
                     c.drawRoundRect(3f,3f,width-3f,height-3f,height*.15f,height*.15f,paint)
                 }

@@ -127,6 +127,31 @@ class AtlasThemeTest {
         checkBadges("live-2");shot(s,"06-live-category")
         c.pause().stop().destroy()
     }
+    @Test fun atlasCategoryNumbersFollowListPositionsAndStayOutsideTheRemoteFocusChain() {
+        val c=Robolectric.buildActivity(HomeActivity::class.java).create();val a=c.get();val s=a.screen
+        s.provider.testMode=true;c.start().resume().visible();load(s);s.theme=Atlas.ID
+        fun assertNumbers(start:Int){
+            val categories=rows(s,"atlas-category-").map{it as TextView}
+            val numbers=rows(s,"atlas-cat-ordinal-").map{it as TextView}
+            assertEquals(Atlas.CAT_PAGE,categories.size)
+            assertEquals(categories.size,numbers.size)
+            categories.zip(numbers).forEachIndexed{i,(row,num)->
+                assertEquals("atlas-cat-ordinal-"+row.tag.toString().removePrefix("atlas-category-"),num.tag)
+                assertEquals((start+i).toString().padStart(2,'0'),num.text.toString())
+                assertEquals(row.top,num.top)
+                assertTrue(num.left>=row.right-row.paddingRight && num.right<row.right)
+                assertFalse(num.isFocusable);assertFalse(num.isClickable)
+                assertEquals(if(row.isFocused)Atlas.ink else Atlas.muted,num.currentTextColor)
+            }
+        }
+        s.categories();layout(s);assertNumbers(1)
+        repeat(Atlas.CAT_PAGE){key(a,KeyEvent.KEYCODE_DPAD_DOWN);layout(s)}
+        assertNumbers(2)
+        assertEquals(rows(s,"atlas-category-").last().tag,s.findFocus()?.tag)
+        s.catalogue(false);layout(s);assertNumbers(1)
+        s.catalogue(true);layout(s);assertNumbers(1)
+        c.pause().stop().destroy()
+    }
     @Test @Config(qualifiers="w960dp-h540dp-land-mdpi") fun phoneLandscapeTapAndVerticalSwipe() {
         val c=Robolectric.buildActivity(HomeActivity::class.java).create();val a=c.get();val s=a.screen
         shadowOf(a.packageManager).setSystemFeature("android.hardware.touchscreen",true)
@@ -135,6 +160,11 @@ class AtlasThemeTest {
         fun motion(start:Long,t:Long,action:Int,x:Float,y:Float){val e=MotionEvent.obtain(start,t,action,x,y,0);s.dispatchTouchEvent(e);e.recycle()}
         fun tap(x:Float,y:Float){motion(0,0,0,x,y);motion(0,80,1,x,y);shadowOf(Looper.getMainLooper()).idle()}
         tap(240f,160f);layout(s,960,540);assertEquals("live",s.page)
+        val firstNumber=s.findViewWithTag<TextView>("atlas-cat-ordinal-")
+        val firstCategory=s.findViewWithTag<TextView>("atlas-category-")
+        assertEquals("01",firstNumber.text.toString())
+        assertTrue(firstNumber.left>=firstCategory.right-firstCategory.paddingRight)
+        shot(s,"09-live-phone",960,540)
         motion(100,100,0,360f,405f);motion(100,130,2,360f,288f);motion(100,190,1,360f,190f)
         layout(s,960,540);assertEquals("atlas-entry-live-11",rows(s,"atlas-entry-").first().tag)
         s.home();layout(s,960,540);tap(220f,220f);layout(s,960,540);assertEquals("movies",s.page)
@@ -178,8 +208,25 @@ class AtlasThemeTest {
         scene.put(still,0,0,1920,1080);controls.bringToFront()
         shot(s,"07-fullscreen-live");scene.removeView(still)
         key(a,KeyEvent.KEYCODE_DPAD_CENTER);layout(s)
-        assertEquals(View.INVISIBLE,controls.visibility)
-        assertEquals(1,views(s).filterIsInstance<ChannelOverlay>().size)
+        assertEquals(View.VISIBLE,controls.visibility)
+        assertTrue((channels as FullscreenControls.Control).selectedIcon)
+        assertNull(controls.findFocus())
+        val drawer=views(s).filterIsInstance<ChannelOverlay>().single()
+        val numbers=rows(s,"atlas-drawer-number-").map{it as TextView}
+        assertEquals((1..10).map{it.toString().padStart(2,'0')},numbers.map{it.text.toString()})
+        assertTrue(numbers.all{!it.isFocusable && !it.isClickable})
+        val logos=rows(s,"atlas-drawer-logo-").map{it as ImageView}
+        assertEquals(10,logos.size);assertTrue(logos.all{it.drawable!=null && !it.isFocusable})
+        assertTrue(numbers.zip(logos).all{(number,logo)->number.right<logo.left})
+        assertEquals("atlas-drawer-row-0",s.findFocus()?.tag)
+        scene.put(still,0,0,1920,1080);controls.bringToFront();drawer.bringToFront()
+        shot(s,"10-channel-drawer-tv");scene.removeView(still)
+        repeat(10){key(a,KeyEvent.KEYCODE_DPAD_DOWN)};layout(s)
+        assertEquals("atlas-drawer-row-10",s.findFocus()?.tag)
+        assertEquals("11",s.findViewWithTag<TextView>("atlas-drawer-number-10").text.toString())
+        assertTrue(s.back());controls.reveal();assertSame(channels,s.findFocus())
+        controls.conceal();key(a,KeyEvent.KEYCODE_DPAD_CENTER);layout(s)
+        assertEquals("atlas-drawer-row-0",s.findFocus()?.tag)
         assertTrue(s.back());controls.reveal();assertSame(channels,s.findFocus())
         key(a,KeyEvent.KEYCODE_DPAD_RIGHT);assertSame(favorite,s.findFocus())
         key(a,KeyEvent.KEYCODE_DPAD_CENTER);assertTrue(favorite.selectedIcon)
@@ -216,8 +263,21 @@ class AtlasThemeTest {
         assertTrue(favorite.selectedIcon)
         val channels=s.findViewWithTag<View>("atlas-player-channels")
         tap((channels.left+channels.right)/2f,(channels.top+channels.bottom)/2f)
-        assertEquals(View.INVISIBLE,controls.visibility)
-        assertEquals(1,views(s).filterIsInstance<ChannelOverlay>().size)
+        assertEquals(View.VISIBLE,controls.visibility)
+        assertTrue((channels as FullscreenControls.Control).selectedIcon)
+        assertNull(controls.findFocus())
+        val drawer=views(s).filterIsInstance<ChannelOverlay>().single()
+        scene.put(still,0,0,1920,1080);controls.bringToFront();drawer.bringToFront()
+        shot(s,"11-channel-drawer-phone",960,540);scene.removeView(still)
+        val steps=listOf(MotionEvent.ACTION_DOWN to 350f, MotionEvent.ACTION_MOVE to 190f, MotionEvent.ACTION_UP to 140f)
+        steps.forEachIndexed{i,(action,y)->
+            val e=MotionEvent.obtain(200,200L+i*60,action,120f,y,0);s.dispatchTouchEvent(e);e.recycle()
+        }
+        layout(s,960,540)
+        assertEquals("11",s.findViewWithTag<TextView>("atlas-drawer-number-10").text.toString())
+        val back=drawer.findViewWithTag<View>("universe-back")
+        tap((back.left+back.right)/2f,(back.top+back.bottom)/2f)
+        assertTrue(views(s).none{it is ChannelOverlay})
         c.pause().stop().destroy()
     }
 

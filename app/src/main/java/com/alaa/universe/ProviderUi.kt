@@ -704,9 +704,24 @@ class ProviderUi(private val screen:UniverseScreen) {
         if(!live)Atlas.chip(s,if(kind=="movie")"CINEMA" else "SERIES",54,168,127,38)
         val categoryRows=BrowseIndex.page(cats,catOffset,Atlas.CAT_PAGE).mapIndexed{i,c->
             val title=when(c.id){""->"الكل";"favorites"->"المفضلة";"recent"->"المشاهدة الأخيرة";else->c.name}
-            Atlas.row(s,title,xCat,top+84*i,Atlas.CATEGORY_W,75,29f,c.id==category){
+            val y=top+84*i
+            val h=75
+            val ordinal=(catOffset+i+1).toString().padStart(2,'0')
+            Atlas.row(s,title,xCat,y,Atlas.CATEGORY_W,h,29f,c.id==category){
                 category=c.id;offset=0;nextCatFocus=i;browse(kind);loadOpenedCategory(c)
-            }.also{v->v.tag="atlas-category-${c.id}";bindMove(v,true,c.id)
+            }.also{v->
+                v.tag="atlas-category-${c.id}"
+                // Text leads on the physical left; reserve space for the trailing number
+                // so long category names ellipsize without overlapping it.
+                v.addOnLayoutChangeListener{row,_,t,_,b,_,ot,_,ob->
+                    if(b-t!=ob-ot)row.setPadding((b-t)/4,0,((b-t)*94f/h).toInt(),0)
+                }
+                val number=Atlas.label(s,ordinal,xCat+21,y,64,h,21f,Atlas.muted,true,false).apply{
+                    tag="atlas-cat-ordinal-${c.id}"
+                    importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                }
+                v.setOnFocusChangeListener{_,focused->number.setTextColor(if(focused)Atlas.ink else Atlas.muted)}
+                bindMove(v,true,c.id)
                 v.setOnKeyListener{_,key,event->
                     if(event.action!=KeyEvent.ACTION_DOWN)false
                     else if(key==KeyEvent.KEYCODE_DPAD_DOWN&&i==Atlas.CAT_PAGE-1&&catOffset+Atlas.CAT_PAGE<cats.size){catOffset++;nextCatFocus=i;browse(kind);true}
@@ -969,16 +984,19 @@ class ProviderUi(private val screen:UniverseScreen) {
         if(!ensureBrowseIndex())return
         val channels=if(currentList.isEmpty())browseIndex!!.select("live","",emptySet(),emptySet()) else currentList
         if(channels.isEmpty())return
-        fullscreenControls?.conceal()
+        if(atlas)fullscreenControls?.setAtlasDrawerOpen(true) else fullscreenControls?.conceal()
         val overlay=ChannelOverlay(context,channels,playback.entry?.id.orEmpty(),accent,{entry->
             closeChannelList();selected=entry;playChecked(entry);recents.add(identity(entry));saveState()
             fullscreen();fullscreenControls?.conceal()
-        },{closeChannelList()},atlasLogo=if(atlas)::bindAtlasChannelLogo else null)
+        },{closeChannelList()},atlasLogo=if(atlas) { e,image -> bindAtlasChannelLogo(e,image,0xffe9bd70.toInt(),80) } else null)
         channelOverlay=overlay
         stage!!.put(overlay,0,0,1920,1080)
     }
     private fun closeChannelList(){
-        channelOverlay?.let{stage?.removeView(it)};channelOverlay=null
+        channelOverlay?.let{
+            stage?.removeView(it)
+            if(atlas)fullscreenControls?.setAtlasDrawerOpen(false)
+        };channelOverlay=null
         stage?.apply{isFocusable=true;isFocusableInTouchMode=true;requestFocus()}
     }
     private fun skipFullscreen(delta:Int){
