@@ -250,23 +250,17 @@ class FullscreenControls(
         };stage.put(b,x,y,size,size);buttons.add(b);return b
     }
     private var atlasDrawerOpen=false
-    private var previousDescendantFocusability=FOCUS_BEFORE_DESCENDANTS
-    fun show(){visibility=View.VISIBLE;main.removeCallbacks(hide);if(attached && !atlasDrawerOpen)main.postDelayed(hide,4000)}
+    fun show(){
+        if(atlasDrawerOpen)return
+        visibility=View.VISIBLE
+        main.removeCallbacks(hide)
+        if(attached)main.postDelayed(hide,4000)
+    }
     fun setAtlasDrawerOpen(open:Boolean){
-        if(atlasChannels==null)return
+        val channels=atlasChannels?:return
         atlasDrawerOpen=open
-        atlasChannels?.selectedIcon=open
-        buttons.first().visibility=if(open)View.INVISIBLE else View.VISIBLE
-        if(open){
-            setAtlasTransport(false)
-            previousDescendantFocusability=descendantFocusability
-            descendantFocusability=FOCUS_BLOCK_DESCENDANTS
-            findFocus()?.clearFocus()
-            show()
-        } else {
-            descendantFocusability=previousDescendantFocusability
-            conceal()
-        }
+        channels.selectedIcon=open
+        conceal()
     }
     fun conceal(){
         main.removeCallbacks(hide)
@@ -277,6 +271,7 @@ class FullscreenControls(
         (parent as? View)?.apply{isFocusable=true;isFocusableInTouchMode=true;requestFocus()}
     }
     fun reveal():Boolean {
+        if(atlasDrawerOpen)return false
         val hidden=visibility!=View.VISIBLE
         show()
         if(hidden || findFocus()==null)leadingControl().requestFocus()
