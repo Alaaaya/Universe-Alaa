@@ -84,15 +84,18 @@ internal object Atlas {
                 v.setPadding((74*scale).toInt(),0,(startInset*scale).toInt(),0)
             }
         }
-        val image=ImageView(s.context).apply {
+        val image=object:ImageView(s.context){
+            override fun onMeasure(widthMeasureSpec:Int,heightMeasureSpec:Int){
+                val inset=View.MeasureSpec.getSize(heightMeasureSpec)/7
+                if(paddingLeft!=inset)setPadding(inset,inset,inset,inset)
+                super.onMeasure(widthMeasureSpec,heightMeasureSpec)
+            }
+        }.apply {
             tag="atlas-channel-logo-${entry.id}"
             background=shape(panel,10f,line)
             scaleType=ImageView.ScaleType.FIT_CENTER
             isFocusable=false;isClickable=false
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            addOnLayoutChangeListener { v,_,t,_,b,_,ot,_,ob ->
-                if(b-t!=ob-ot){val inset=(b-t)/7;v.setPadding(inset,inset,inset,inset)}
-            }
         }
         s.put(image,if(mirrorScene)x+w-size-14 else x+14,y+(h-size)/2,size,size)
         return image
