@@ -1,0 +1,97 @@
+diff --git a/app/src/main/java/com/alaa/universe/PlaybackProgress.kt b/app/src/main/java/com/alaa/universe/PlaybackProgress.kt
+--- a/app/src/main/java/com/alaa/universe/PlaybackProgress.kt
++++ b/app/src/main/java/com/alaa/universe/PlaybackProgress.kt
+@@ -52,17 +52,28 @@
+ 
+ /** Bounded search over the already-loaded catalogue; no network calls and no extra entry views. */
+ internal object MediaQuickSearch {
++    private val SEARCHABLE_KINDS = setOf("live", "movie", "series")
+     fun search(entries: List<MediaEntry>, query: String, limit: Int = 60): List<MediaEntry> {
+         val q = query.trim().lowercase(Locale.ROOT)
+         if (q.isEmpty() || limit <= 0) return emptyList()
+-        return entries.asSequence()
+-            .filter { it.kind in setOf("live", "movie", "series") }
+-            .mapNotNull { e ->
+-                val name = e.name.trim().lowercase(Locale.ROOT)
+-                if (!name.contains(q)) null else (if (name.startsWith(q)) 0 else 1) to e
+-            }
+-            .sortedWith(compareBy<Pair<Int, MediaEntry>> { it.first })
+-            .take(limit).map { it.second }.toList()
++        // Keep the original stable prefix-first ordering without sorting every match.
++        // A broad query can match all 10k+ channels; sorting those only to return 60
++        // made each debounced search O(N log N) with avoidable pair allocations.
++        val prefixes = ArrayList<MediaEntry>(limit)
++        val contains = ArrayList<MediaEntry>(limit)
++        for (entry in entries) {
++            if (entry.kind !in SEARCHABLE_KINDS) continue
++            val name = entry.name.trim().lowercase(Locale.ROOT)
++            if (!name.contains(q)) continue
++            if (name.startsWith(q)) {
++                if (prefixes.size < limit) prefixes += entry
++            } else if (contains.size < limit) contains += entry
++        }
++        if (prefixes.size >= limit) return prefixes
++        return buildList(prefixes.size + minOf(contains.size, limit - prefixes.size)) {
++            addAll(prefixes)
++            addAll(contains.take(limit - prefixes.size))
++        }
+     }
+ }
+ 
+diff --git a/app/src/test/java/com/alaa/universe/BrowseIndexTest.kt b/app/src/test/java/com/alaa/universe/BrowseIndexTest.kt
+--- a/app/src/test/java/com/alaa/universe/BrowseIndexTest.kt
++++ b/app/src/test/java/com/alaa/universe/BrowseIndexTest.kt
+@@ -23,6 +23,26 @@
+         assertEquals(10,index.count("movie"));assertEquals(6,index.home.size)
+         assertTrue(group.all{it.categoryId=="2"})
+     }
++    @Test fun tenThousandChannelIndexBuildAndPageStayBounded() {
++        val source=ProviderSnapshot("10k fixture",null,
++            (0 until 10_000).map{MediaEntry("$it","Channel $it","${it%100}","live")},
++            (0 until 100).map{MediaCategory("$it","Group $it","live")})
++        val buildRuns=20
++        val buildStart=System.nanoTime()
++        repeat(buildRuns){BrowseIndex(source,{true})}
++        val buildMs=(System.nanoTime()-buildStart)/1_000_000.0/buildRuns
++        val index=BrowseIndex(source,{true})
++        val all=index.select("live","",emptySet(),emptySet())
++        var pageRows=0
++        val pageStart=System.nanoTime()
++        repeat(1000){pageRows+=BrowseIndex.page(all,(it*12)%10_000,12).size}
++        val pageMs=(System.nanoTime()-pageStart)/1_000_000.0
++        assertEquals(10_000,index.count("live"))
++        assertEquals(4,BrowseIndex.page(all,9_996,12).size)
++        assertEquals(11_992,pageRows)
++        System.out.println("10k index build mean: ${"%.3f".format(java.util.Locale.ROOT,buildMs)} ms (host JVM); 1000 bounded 12-row pages: ${"%.3f".format(java.util.Locale.ROOT,pageMs)} ms (host JVM)")
++    }
++
+     @Test fun pageAccessIsBoundedAtDeepOffsetsAndEnds() {
+         var reads=0
+         val source=object:AbstractList<Int>(){
+diff --git a/app/src/test/java/com/alaa/universe/PlaybackProgressTest.kt b/app/src/test/java/com/alaa/universe/PlaybackProgressTest.kt
+--- a/app/src/test/java/com/alaa/universe/PlaybackProgressTest.kt
++++ b/app/src/test/java/com/alaa/universe/PlaybackProgressTest.kt
+@@ -20,6 +20,23 @@
+         assertEquals(listOf("c","m1","s"),MediaQuickSearch.search(items,"sea").map{it.id})
+         assertEquals("c",MediaQuickSearch.search(items," sea news ").single().id)
+         assertTrue(MediaQuickSearch.search(items," ").isEmpty())
++    }
++
++    @Test fun tenThousandChannelBroadSearchKeepsStablePrefixFirstResultsAndIsBounded() {
++        val channels=(0 until 10_000).map { i ->
++            MediaEntry("c$i", if (i % 97 == 0) "News Channel $i" else "Channel News $i", "1", "live")
++        }
++        val samples=50
++        val started=System.nanoTime()
++        repeat(samples) {
++            val result=MediaQuickSearch.search(channels,"news")
++            assertEquals(60,result.size)
++            assertTrue(result.takeWhile { it.name.startsWith("News", ignoreCase=true) }
++                .all { it.name.startsWith("News", ignoreCase=true) })
++            assertEquals((0..59).map { "c${it*97}" },result.takeWhile { it.name.startsWith("News", ignoreCase=true) }.map { it.id })
++        }
++        val elapsedMs=(System.nanoTime()-started)/1_000_000.0
++        System.out.println("10k channel broad-search mean: ${"%.3f".format(java.util.Locale.ROOT,elapsedMs/samples)} ms over $samples runs (host JVM; not Android-device timing)")
+     }
+ 
+     @Test fun sortModesAreStableUnknownMetadataIsLastAndLiveOrderIsUntouched() {

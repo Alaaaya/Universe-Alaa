@@ -9,6 +9,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import android.widget.EditText
 import android.widget.TextView
 import androidx.media3.ui.PlayerView
 import org.junit.Assert.*
@@ -54,6 +55,30 @@ class AtlasThemeTest {
     }
     private fun rows(s:UniverseScreen,prefix:String)=views(s).filter{it.tag?.toString()?.startsWith(prefix)==true}
     private fun key(a:HomeActivity,k:Int){a.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN,k));a.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP,k))}
+    @Test fun atlasConnectionDialogUsesNavyGoldAndClearProviderTabs() {
+        val c=Robolectric.buildActivity(HomeActivity::class.java).create();val a=c.get();val s=a.screen
+        s.provider.testMode=true;s.theme=Atlas.ID;c.start().resume().visible();s.home();s.provider.loginDialog()
+        val d=org.robolectric.shadows.ShadowDialog.getLatestDialog() as android.app.AlertDialog
+        val decor=d.window!!.decorView
+        val all=views(decor)
+        assertTrue(all.filterIsInstance<TextView>().any{it.text.toString()=="ربط قائمة القنوات"})
+        val xtream=all.filterIsInstance<android.widget.Button>().first{it.text.toString().contains("Xtream")}
+        val m3u=all.filterIsInstance<android.widget.Button>().first{it.text.toString().contains("M3U URL")}
+        val width=minOf(PremiumDialogs.dp(a,1360),(a.resources.displayMetrics.widthPixels*.94f).toInt())
+        decor.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(a.resources.displayMetrics.heightPixels,View.MeasureSpec.AT_MOST))
+        decor.layout(0,0,width,decor.measuredHeight)
+        assertTrue(xtream.width>0&&m3u.width>0)
+        assertTrue("wide panel",width>=a.resources.displayMetrics.widthPixels*0.70f)
+        val path=File("build/atlas-captures").apply{mkdirs()}
+        views(decor).forEach{it.setScrollIndicators(0)}
+        val b=Bitmap.createBitmap(decor.width.coerceAtLeast(1),decor.height.coerceAtLeast(1),Bitmap.Config.ARGB_8888)
+        decor.draw(Canvas(b));File(path,"12-connection-dialog.png").outputStream().use{assertTrue(b.compress(Bitmap.CompressFormat.PNG,100,it))};b.recycle()
+        m3u.performClick();shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(all.filterIsInstance<EditText>().any{it.hint.toString().contains("playlist.m3u")&&it.visibility==View.VISIBLE})
+        assertTrue(m3u.text.toString().contains("M3U"))
+        d.dismiss();c.pause().stop().destroy()
+    }
+
     @Test fun capturesFiveNativeSurfaces() {
         val c=Robolectric.buildActivity(HomeActivity::class.java).create(); val s=c.get().screen
         s.provider.testMode=true;c.start().resume().visible();load(s);s.theme=Atlas.ID;s.homeTheme="classic"
@@ -219,6 +244,11 @@ class AtlasThemeTest {
         assertEquals(10,logos.size);assertTrue(logos.all{it.drawable!=null && !it.isFocusable})
         assertTrue(numbers.zip(logos).all{(number,logo)->number.right<logo.left})
         assertEquals("atlas-drawer-row-0",s.findFocus()?.tag)
+        val drawerStage=drawer.getChildAt(0) as Stage
+        val firstRow=drawerStage.findViewWithTag<View>("atlas-drawer-row-0")
+        val lastRow=drawerStage.findViewWithTag<View>("atlas-drawer-row-9")
+        assertEquals(682,firstRow.width);assertEquals(88,firstRow.height);assertEquals(49,firstRow.left);assertEquals(111,firstRow.top)
+        assertEquals(1027,lastRow.bottom);assertTrue("drawer should use the bottom space",1080-lastRow.bottom<=53)
         scene.put(still,0,0,1920,1080);drawer.bringToFront()
         shot(s,"10-channel-drawer-tv");scene.removeView(still)
         repeat(10){key(a,KeyEvent.KEYCODE_DPAD_DOWN)};layout(s)
@@ -239,7 +269,7 @@ class AtlasThemeTest {
         qualityDialog.dismiss();layout(s)
         quality.requestFocus();key(a,KeyEvent.KEYCODE_DPAD_RIGHT)
         key(a,KeyEvent.KEYCODE_DPAD_CENTER);layout(s)
-        assertEquals("السابق",s.findFocus()?.contentDescription)
+        assertEquals("خيارات التشغيل",s.findFocus()?.contentDescription)
         controls.conceal();controls.reveal()
         assertSame(channels,s.findFocus())
         c.pause().stop().destroy()

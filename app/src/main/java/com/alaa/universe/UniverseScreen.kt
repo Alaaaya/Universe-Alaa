@@ -100,14 +100,34 @@ class UniverseScreen(context:Context): FrameLayout(context) {
 
     private var prayerTickCount=0
     private val prayerTick=object:Runnable{
-        override fun run(){if(homeTheme=="prayer"&&page=="home")home();if(++prayerTickCount%15==0)PrayerTimes.refresh(context){};postDelayed(this,60000)}
+        override fun run(){
+            if(homeTheme=="prayer"&&page=="home")updatePrayerDisplay()
+            if(++prayerTickCount%15==0)PrayerTimes.refresh(context){post{if(isAttachedToWindow&&homeTheme=="prayer"&&page=="home")updatePrayerDisplay()}}
+            postDelayed(this,60000)
+        }
     }
     override fun onAttachedToWindow(){
         super.onAttachedToWindow();postDelayed(prayerTick,60000)
-        PrayerTimes.refresh(context){post{if(isAttachedToWindow&&homeTheme=="prayer"&&page=="home")home()}}
+        PrayerTimes.refresh(context){post{if(isAttachedToWindow&&homeTheme=="prayer"&&page=="home")updatePrayerDisplay()}}
     }
     override fun onDetachedFromWindow(){removeCallbacks(prayerTick);super.onDetachedFromWindow()}
     private fun glass(color:Int,stroke:Int,radius:Float=24f)=surface(color,stroke).apply{cornerRadius=radius}
+    private fun prayerClock()=fixedClock?:SimpleDateFormat("HH:mm",Locale.US).apply{timeZone=TimeZone.getTimeZone("Europe/Berlin")}.format(Date())
+    private fun updatePrayerDisplay(){
+        findViewWithTag<TextView>("prayer-clock")?.text=prayerClock()
+        val state=PrayerTimes.snapshot(context)
+        for(i in 0..4){
+            findViewWithTag<TextView>("prayer-time-value-$i")?.text=state?.values?.get(i)?:"--:--"
+            findViewWithTag<View>("prayer-next-outline-$i")?.visibility=if(state?.next==i)View.VISIBLE else View.GONE
+            findViewWithTag<View>("prayer-time-card-$i")?.background=glass(
+                if(state?.next==i)0xb00d6995.toInt() else 0x33090f24,
+                if(state?.next==i)0xff67ecff.toInt() else 0x226a87a7,23f)
+        }
+        findViewWithTag<TextView>("prayer-times-status")?.apply{
+            text=if(state==null)"Prayer times unavailable" else if(state.stale)"Offline · last saved times" else ""
+            visibility=if(state==null||state.stale)View.VISIBLE else View.GONE
+        }
+    }
     private fun prayerHome(){
         stage.put(PrayerBackdrop(context),0,0,1920,1080)
         stage.put(GlassContour(context,0xff329fff.toInt(),35f),9,7,1902,206)
@@ -118,7 +138,7 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         text(df.format(Date()),174,91,350,30,22f,Color.WHITE)
         stage.put(View(context).apply{background=surface(0x8887cfff.toInt())},532,54,2,100)
         text("(Days Left: "+daysLeft()+")",174,135,340,30,21f,Color.WHITE)
-        text(fixedClock?:SimpleDateFormat("HH:mm",Locale.US).apply{timeZone=TimeZone.getTimeZone("Europe/Berlin")}.format(Date()),560,58,250,75,56f,Color.WHITE,true).typeface=Typeface.DEFAULT_BOLD
+        text(prayerClock(),560,58,250,75,56f,Color.WHITE,true).apply{tag="prayer-clock";typeface=Typeface.DEFAULT_BOLD}
         text("—",560,133,250,28,25f,Color.WHITE,true)
         stage.put(MosqueArt(context),797,27,238,158)
         stage.put(View(context).apply{background=glass(0x440b1931,0xaa58c6ee.toInt(),20f)},1029,26,850,161)
@@ -128,13 +148,15 @@ class UniverseScreen(context:Context): FrameLayout(context) {
         val names=listOf("الفجر","الظهر","العصر","المغرب","العشاء")
         for(i in 0..4){
             val x=1045+i*166
-            if(state?.next==i)stage.put(GlassContour(context,0xff23ddff.toInt(),23f),x-13,69,182,125)
-            stage.put(View(context).apply{background=glass(if(state?.next==i)0xb00d6995.toInt() else 0x33090f24,if(state?.next==i)0xff67ecff.toInt() else 0x226a87a7,23f)},x,82,156,99)
+            stage.put(GlassContour(context,0xff23ddff.toInt(),23f).apply{tag="prayer-next-outline-$i";visibility=if(state?.next==i)View.VISIBLE else View.GONE},x-13,69,182,125)
+            stage.put(View(context).apply{tag="prayer-time-card-$i";background=glass(if(state?.next==i)0xb00d6995.toInt() else 0x33090f24,if(state?.next==i)0xff67ecff.toInt() else 0x226a87a7,23f)},x,82,156,99)
             stage.put(PrayerSymbol(context,i),x+49,84,58,33)
             text(names[i],x,115,156,28,20f,Color.WHITE,true)
-            text(state?.values?.get(i)?:"--:--",x,146,156,30,26f,Color.WHITE,true)
+            text(state?.values?.get(i)?:"--:--",x,146,156,30,26f,Color.WHITE,true).tag="prayer-time-value-$i"
         }
-        if(state==null||state.stale)text(if(state==null)"Prayer times unavailable" else "Offline · last saved times",1110,202,700,30,20f,Color.WHITE,true)
+        text(if(state==null)"Prayer times unavailable" else if(state.stale)"Offline · last saved times" else "",1110,202,700,30,20f,Color.WHITE,true).apply{
+            tag="prayer-times-status";visibility=if(state==null||state.stale)View.VISIBLE else View.GONE
+        }
         stage.put(AlaaMark(context,0xffd96af6.toInt()),633,326,115,115)
         val logo=android.text.SpannableString("universe-Alaa")
         logo.setSpan(android.text.style.ForegroundColorSpan(0xff37c5ff.toInt()),9,logo.length,0)

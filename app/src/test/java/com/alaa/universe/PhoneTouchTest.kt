@@ -78,7 +78,7 @@ class PhoneTouchTest {
     assertEquals(100,button.left);assertEquals(200,button.top);assertEquals(400,button.width);assertEquals(80,button.height)
  }
  @Test fun phonePlayerUsesSameNativeControls(){
-    val p=PlaybackSession(activity,{ProviderRepository(activity)}){}
+    val p=PlaybackSession(activity,{ProviderRepository(activity)},{})
     var back=false
     val controls=FullscreenControls(activity,p,MediaEntry("1","Live","c","live"),Harak.GOLD,"Live",false,{back=true},{},{},{false},{})
     layout(controls)
@@ -90,7 +90,7 @@ class PhoneTouchTest {
  }
  @Test fun capturePhoneAndTvSameScenes(){
     val s=UniverseScreen(activity);s.fixedClock="12:34";s.provider.testMode=true
-    val out=File("/home/kit/universe-Alaa/artifacts/qa-0.4.7").apply{mkdirs()}
+    val out=File("build/test-artifacts/qa-0.4.7").apply{mkdirs()}
     fun shot(name:String){
         for((label,size) in listOf("phone" to (960 to 540),"tv" to (1920 to 1080))){
             layout(s,size.first,size.second)

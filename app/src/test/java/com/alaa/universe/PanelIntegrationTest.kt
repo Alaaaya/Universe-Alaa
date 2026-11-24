@@ -74,7 +74,7 @@ class PanelIntegrationTest {
         assertEquals("Active",integration.status)
         assertEquals(row.getString("url"),integration.configuredLogin!!.m3uUrl)
         assertTrue(liveRepo.cached()!!.entries.size>1000)
-        java.io.File("/home/kit/universe-Alaa/artifacts/panel-live-049.txt").writeText("Read-only exact owner playlist row; simulated authenticated panel transport; real HTTPS catalogue; Active; channels="+liveRepo.cached()!!.entries.size)
+        java.io.File("build/test-artifacts/panel-live-049.txt").apply{parentFile.mkdirs();writeText("Read-only exact owner playlist row; simulated authenticated panel transport; real HTTPS catalogue; Active; channels="+liveRepo.cached()!!.entries.size)}
     }
     @Test fun pendingShowsCodeOnlyAndNoProvider() {
         val p = integration(); p.open()

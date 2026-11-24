@@ -13,10 +13,11 @@ import java.security.MessageDigest
 data class ProviderLogin(val name: String, val server: String, val username: String = "", val password: String = "", val m3uUrl: String = "", val allowHttp: Boolean = false) {
     override fun toString() = "ProviderLogin(redacted)"
 }
-data class MediaEntry(val id: String, val name: String, val categoryId: String, val kind: String, val icon: String = "", val extension: String = "mp4", val directUrl: String = "", val season: Int = 0, val plot: String = "", val categoryIds: Set<String> = setOf(categoryId)) {
+data class MediaEntry(val id: String, val name: String, val categoryId: String, val kind: String, val icon: String = "", val extension: String = "mp4", val directUrl: String = "", val season: Int = 0, val plot: String = "", val categoryIds: Set<String> = setOf(categoryId), val releaseYear: Int? = null, val addedTimestamp: Long? = null, val viewCount: Long? = null, val rating: Double? = null, val durationSeconds: Long? = null) {
     override fun toString() = "MediaEntry(redacted)"
 }
 data class MediaCategory(val id: String, val name: String, val kind: String)
+data class EpgProgram(val title:String,val description:String,val startTimestamp:Long?,val endTimestamp:Long?)
 data class ProviderSnapshot(val name: String, val expires: Long?, val entries: List<MediaEntry>, val categories: List<MediaCategory>, val updated: Long = System.currentTimeMillis()) {
     /** Expiry is Unix seconds, as supplied by Xtream. Null means unknown/unlimited, not expired. */
     fun daysLeft(nowMillis: Long = System.currentTimeMillis()): Long? =
@@ -33,8 +34,15 @@ data class ProviderSnapshot(val name: String, val expires: Long?, val entries: L
 private fun objects(a: JSONArray): List<JSONObject> = (0 until a.length()).map { a.getJSONObject(it) }
 private fun entryJson(e: MediaEntry) = JSONObject().put("id", e.id).put("name", e.name).put("categoryId", e.categoryId)
     .put("kind", e.kind).put("icon", e.icon).put("extension", e.extension).put("directUrl", e.directUrl).put("season", e.season).put("plot", e.plot).put("categoryIds", JSONArray(e.categoryIds.toList()))
+    .put("releaseYear",e.releaseYear?:JSONObject.NULL).put("addedTimestamp",e.addedTimestamp?:JSONObject.NULL).put("viewCount",e.viewCount?:JSONObject.NULL)
+    .put("rating",e.rating?:JSONObject.NULL).put("durationSeconds",e.durationSeconds?:JSONObject.NULL)
 private fun entryFromJson(j: JSONObject) = MediaEntry(j.getString("id"), j.getString("name"), j.getString("categoryId"), j.getString("kind"),
-    j.optString("icon"), j.optString("extension", "mp4"), j.optString("directUrl"), j.optInt("season"), j.optString("plot"), j.optJSONArray("categoryIds")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } ?: setOf(j.getString("categoryId")))
+    j.optString("icon"), j.optString("extension", "mp4"), j.optString("directUrl"), j.optInt("season"), j.optString("plot"), j.optJSONArray("categoryIds")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } ?: setOf(j.getString("categoryId")),
+    j.optInt("releaseYear").takeIf{j.has("releaseYear")&&!j.isNull("releaseYear")},
+    j.optLong("addedTimestamp").takeIf{j.has("addedTimestamp")&&!j.isNull("addedTimestamp")},
+    j.optLong("viewCount").takeIf{j.has("viewCount")&&!j.isNull("viewCount")},
+    j.optDouble("rating").takeIf{j.has("rating")&&!j.isNull("rating")},
+    j.optLong("durationSeconds").takeIf{j.has("durationSeconds")&&!j.isNull("durationSeconds")})
 
 /** Blocking API. Call on an IO worker, never the Android main thread. No network response is logged. */
 class ProviderRepository internal constructor(private val vault: CredentialVault, private val testFetch: ((String) -> String)? = null) {
@@ -264,6 +272,26 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
         } }
         operation
     }
+    internal fun prepareEpg(entry:MediaEntry):()->List<EpgProgram> = safe {
+        require(entry.kind=="live") { "Program guide is only available for live channels." }
+        val request=synchronized(stateLock){ensureLoaded();(activeLogin?:error("Connect a provider first.")) to generation}
+        val login=request.first;val ticket=request.second
+        require(login.m3uUrl.isBlank()) { "This M3U source does not provide a program guide." }
+        check(isVisible(entry)) { "Channel is no longer available." }
+        val operation:()->List<EpgProgram> = { safe {
+            checkTicket(ticket)
+            val json=JSONObject(fetch(api(login,"get_short_epg","stream_id" to entry.id)+"&limit=10",login,ticket))
+            val rows=json.optJSONArray("epg_listings")?:return@safe emptyList()
+            fun decoded(raw:String):String=runCatching{String(java.util.Base64.getDecoder().decode(raw),Charsets.UTF_8)}.getOrDefault(raw).ifBlank{raw}
+            (0 until rows.length()).mapNotNull{i->
+                val row=rows.optJSONObject(i)?:return@mapNotNull null
+                val title=decoded(row.optString("title")).ifBlank{"برنامج"}
+                val description=decoded(row.optString("description"))
+                EpgProgram(title,description,row.optString("start_timestamp").toLongOrNull(),row.optString("stop_timestamp").toLongOrNull())
+            }
+        } }
+        operation
+    }
     fun streamUrl(entry: MediaEntry): String = safe {
         check(isVisible(entry))
         val l = login() ?: error("Connect a provider first.")
@@ -326,7 +354,12 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
                 if (membership in ids && allowed(category.kind, ids, ticket)) rows += MediaEntry(
                     row.get(if (category.kind == "series") "series_id" else "stream_id").toString(), row.optString("name", "Untitled"),
                     membership, category.kind, row.optString(if (category.kind == "series") "cover" else "stream_icon"),
-                    extension(row.optString("container_extension", "mp4")), plot = row.optString("plot"), categoryIds = ids)
+                    extension(row.optString("container_extension", "mp4")), plot = row.optString("plot"), categoryIds = ids,
+                    releaseYear = (row.optString("year").ifBlank{row.optString("releaseDate")}).take(4).toIntOrNull(),
+                    addedTimestamp = row.optString("added").toLongOrNull(),
+                    viewCount = row.optString("views").toLongOrNull(),
+                    rating = row.optString("rating").toDoubleOrNull(),
+                    durationSeconds = parseDurationSeconds(row.optString("duration_secs").ifBlank{row.optString("duration")}))
             }
         }
         return rows
@@ -378,7 +411,12 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
             val previous=merged[key]
             val ids=entry.categoryIds+memberships[memberKey(entry)].orEmpty()+previous?.categoryIds.orEmpty()
             memberships[memberKey(entry)]=ids
-            merged[key]=(previous?:entry).copy(categoryIds=ids)
+            merged[key]=(previous?:entry).copy(categoryIds=ids,
+                releaseYear=entry.releaseYear?:previous?.releaseYear,
+                addedTimestamp=entry.addedTimestamp?:previous?.addedTimestamp,
+                viewCount=entry.viewCount?:previous?.viewCount,
+                rating=entry.rating?:previous?.rating,
+                durationSeconds=entry.durationSeconds?:previous?.durationSeconds)
         }
         val saved=JSONObject();memberships.forEach{(k,v)->saved.put(k,JSONArray(v.toList()))}
         vault.write("category-memberships",JSONObject().put("scope",JSONArray(policy?.scope.orEmpty())).put("rows",saved).toString())
@@ -422,7 +460,7 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
         reader.beginArray()
         while (reader.hasNext()) {
             var id = ""; var name = ""; var category = ""; var kind = ""
-            var icon = ""; var extension = "mp4"; var direct = ""; var season = 0; var plot = ""; var memberships: Set<String>? = null
+            var icon = ""; var extension = "mp4"; var direct = ""; var season = 0; var plot = ""; var year:Int?=null;var added:Long?=null;var views:Long?=null;var rating:Double?=null;var duration:Long?=null;var memberships: Set<String>? = null
             reader.beginObject()
             while (reader.hasNext()) {
                 when (reader.nextName()) {
@@ -435,18 +473,23 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
                     "directUrl" -> direct = reader.nextString()
                     "season" -> season = reader.nextInt()
                     "plot" -> plot = reader.nextString()
+                    "releaseYear" -> year = if(reader.peek()==JsonToken.NULL){reader.nextNull();null}else reader.nextInt()
+                    "addedTimestamp" -> added = if(reader.peek()==JsonToken.NULL){reader.nextNull();null}else reader.nextLong()
+                    "viewCount" -> views = if(reader.peek()==JsonToken.NULL){reader.nextNull();null}else reader.nextLong()
+                    "rating" -> rating = if(reader.peek()==JsonToken.NULL){reader.nextNull();null}else reader.nextDouble()
+                    "durationSeconds" -> duration = if(reader.peek()==JsonToken.NULL){reader.nextNull();null}else reader.nextLong()
                     "categoryIds" -> { val ids = mutableSetOf<String>(); reader.beginArray(); while(reader.hasNext())ids.add(reader.nextString()); reader.endArray(); memberships=ids }
                     else -> reader.skipValue()
                 }
             }
             reader.endObject()
-            consume(MediaEntry(id, name, category, kind, icon, extension, direct, season, plot, memberships ?: setOf(category)))
+            consume(MediaEntry(id, name, category, kind, icon, extension, direct, season, plot, memberships ?: setOf(category),year,added,views,rating,duration))
         }
         reader.endArray()
         check(reader.peek() == JsonToken.END_DOCUMENT)
     }
     internal fun readRows(reader: JsonReader, consume: (JSONObject) -> Unit) {
-        val wanted = setOf("category_id", "category_name", "series_id", "stream_id", "name", "cover", "stream_icon", "container_extension", "plot")
+        val wanted = setOf("category_id", "category_name", "series_id", "stream_id", "name", "cover", "stream_icon", "container_extension", "plot", "year", "releaseDate", "added", "views", "rating", "duration", "duration_secs")
         reader.beginArray()
         var count = 0
         while (reader.hasNext()) {
@@ -455,6 +498,23 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
             reader.beginObject()
             while (reader.hasNext()) {
                 val key = reader.nextName()
+                if (key == "info") {
+                    if(reader.peek()==JsonToken.BEGIN_OBJECT){
+                        val info=JSONObject();reader.beginObject()
+                        while(reader.hasNext()){
+                            val k=reader.nextName()
+                            if(k in setOf("plot","rating","duration","duration_secs","year","releaseDate")){
+                                when(reader.peek()){
+                                    JsonToken.STRING,JsonToken.NUMBER->info.put(k,reader.nextString())
+                                    else->reader.skipValue()
+                                }
+                            } else reader.skipValue()
+                        }
+                        reader.endObject()
+                        for(k in info.keys())if(!row.has(k))row.put(k,info.get(k))
+                    } else reader.skipValue()
+                    continue
+                }
                 if (key == "category_ids") {
                     if (reader.peek() == JsonToken.BEGIN_ARRAY) {
                         val ids = JSONArray(); reader.beginArray()
@@ -480,6 +540,15 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
         reader.endArray()
         check(reader.peek() == JsonToken.END_DOCUMENT)
     }
+    private fun parseDurationSeconds(raw:String):Long? {
+        val value=raw.trim()
+        value.toLongOrNull()?.let{return it.takeIf{n->n>0}}
+        val parts=value.split(":").map{it.toLongOrNull()?:return null}
+        if(parts.size !in 2..3)return null
+        val seconds=if(parts.size==3)parts[0]*3600+parts[1]*60+parts[2] else parts[0]*60+parts[1]
+        return seconds.takeIf{it>0}
+    }
+
     private fun api(l: ProviderLogin, action: String = "", extra: Pair<String, String>? = null): String =
         base(l) + "/player_api.php?username=" + encode(l.username) + "&password=" + encode(l.password) +
             (if (action.isEmpty()) "" else "&action=" + encode(action)) + (extra?.let { "&" + it.first + "=" + encode(it.second) } ?: "")

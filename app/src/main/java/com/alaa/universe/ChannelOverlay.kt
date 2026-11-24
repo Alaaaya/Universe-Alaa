@@ -36,14 +36,18 @@ class ChannelOverlay(context:Context,private val channels:List<MediaEntry>,priva
         }
     }
     private fun renderAtlas(bindLogo:(MediaEntry,ImageView)->Unit){
-        Atlas.block(stage,30,22,560,798,0xed161416.toInt(),24f,divider)
+        // Use the available vertical space and a wider cinema drawer, while keeping
+        // the same ten-row window so 9,000-channel lists stay bounded and responsive.
+        val panelX=30;val panelY=22;val panelW=720;val panelH=1036
+        val rowX=49;val rowW=682;val rowH=88;val rowStep=92;val rowTop=111
+        Atlas.block(stage,panelX,panelY,panelW,panelH,0xed161416.toInt(),24f,divider)
         val back=BackButton.add(stage,gold,close)
         stage.place(back,44,32,55,55)
-        Atlas.label(stage,"جميع القنوات",126,32,370,55,32f,gold,true).gravity=Gravity.CENTER
-        Atlas.icon(stage,R.drawable.ic_live_tv,528,42,36,gold)
-        Atlas.block(stage,49,101,521,1,divider)
+        Atlas.label(stage,"جميع القنوات",126,32,510,55,32f,gold,true).gravity=Gravity.CENTER
+        Atlas.icon(stage,R.drawable.ic_live_tv,696,42,36,gold)
+        Atlas.block(stage,49,101,682,1,divider)
         stage.swipe={x,y,dx,dy->
-            if(x in 30f..590f && y in 112f..805f && kotlin.math.abs(dy)>kotlin.math.abs(dx)) {
+            if(x in 30f..750f && y in 112f..1045f && kotlin.math.abs(dy)>kotlin.math.abs(dx)) {
                 val next=(atlasStart+if(dy<0)atlasPage else -atlasPage).coerceIn(0,(channels.size-atlasPage).coerceAtLeast(0))
                 if(next!=atlasStart){atlasStart=next;at=next;render()}
             }
@@ -51,9 +55,9 @@ class ChannelOverlay(context:Context,private val channels:List<MediaEntry>,priva
         BrowseIndex.page(channels,atlasStart,atlasPage).forEachIndexed{i,entry->
             val index=atlasStart+i
             val number=(index+1).toString().padStart(2,'0')
-            val y=112+i*69
+            val y=rowTop+i*rowStep
             val onAir=entry.id==playing
-            val row=Atlas.label(stage,entry.name,49,y,521,63,26f,white,true,right=false).apply {
+            val row=Atlas.label(stage,entry.name,rowX,y,rowW,rowH,29f,white,true,right=false).apply {
                 id=View.generateViewId();tag="atlas-drawer-row-$index"
                 contentDescription="$number، ${entry.name}"
                 isFocusable=true;isFocusableInTouchMode=true;isClickable=true
@@ -63,11 +67,11 @@ class ChannelOverlay(context:Context,private val channels:List<MediaEntry>,priva
                     addState(intArrayOf(),Atlas.shape(if(onAir)0x523c2e20 else 0x00161416,17f))
                 }
                 addOnLayoutChangeListener { v,_,t,_,b,_,ot,_,ob ->
-                    if(b-t!=ob-ot){val scale=(b-t)/63f;v.setPadding((155*scale).toInt(),0,((if(onAir)58 else 14)*scale).toInt(),0)}
+                    if(b-t!=ob-ot){val scale=(b-t).toFloat()/rowH;v.setPadding((172*scale).toInt(),0,((if(onAir)70 else 18)*scale).toInt(),0)}
                 }
                 setOnClickListener{choose(entry)}
             }
-            Atlas.label(stage,number,57,y,66,63,25f,gold,true,right=false).apply {
+            Atlas.label(stage,number,57,y,66,rowH,28f,gold,true,right=false).apply {
                 gravity=Gravity.CENTER;tag="atlas-drawer-number-$index";importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }
             val logo=ImageView(context).apply {
@@ -76,13 +80,13 @@ class ChannelOverlay(context:Context,private val channels:List<MediaEntry>,priva
                 addOnLayoutChangeListener { v,_,t,_,b,_,ot,_,ob -> if(b-t!=ob-ot){val pad=(b-t)/9;v.setPadding(pad,pad,pad,pad)} }
                 importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }
-            stage.put(logo,134,y+8,47,47);bindLogo(entry,logo)
-            Atlas.block(stage,194,y+13,1,37,divider)
+            stage.put(logo,137,y+15,58,58);bindLogo(entry,logo)
+            Atlas.block(stage,205,y+17,1,54,divider)
             if(onAir){
                 // Indicates the current channel, not measured signal strength.
-                listOf(11,17,25,32).forEachIndexed{bar,height->Atlas.block(stage,524+bar*7,y+46-height,4,height,gold,2f)}
+                listOf(12,19,27,36).forEachIndexed{bar,height->Atlas.block(stage,682+bar*10,y+72-height,5,height,gold,2f)}
             }
-            if(i<atlasPage-1)Atlas.block(stage,58,y+66,502,1,divider)
+            if(i<atlasPage-1)Atlas.block(stage,58,y+rowH+1,663,1,divider)
             if(index==at){row.requestFocus();back.nextFocusDownId=row.id;row.nextFocusUpId=back.id}
         }
     }

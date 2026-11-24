@@ -1,0 +1,15 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:name="orbit" android:fillColor="#00000000" android:strokeColor="#60FFFFFF" android:strokeWidth="1.2"
+        android:pathData="M15,57 C25,26 76,17 94,45 C103,61 87,84 61,91 C38,98 16,83 13,66" />
+    <path android:name="ambient_aura" android:fillColor="#24F2B9FF" android:pathData="M18,54a36,36 0,1 0,72 0a36,36 0,1 0,-72 0" />
+    <path android:name="glass_orb" android:fillColor="#EAF4F8" android:strokeColor="#F8FFFFFF" android:strokeWidth="1.2"
+        android:pathData="M21,54a33,33 0,1 0,66 0a33,33 0,1 0,-66 0" />
+    <path android:name="glass_lilac" android:fillColor="#60DCC8F4" android:pathData="M26,40 C37,20 64,17 78,34 C67,31 55,33 47,42 C39,50 32,60 25,69 C21,60 22,49 26,40 Z" />
+    <path android:name="glass_cyan" android:fillColor="#6049DDEA" android:pathData="M43,82 C54,72 67,65 84,63 C80,80 68,88 54,87 C49,86 46,84 43,82 Z" />
+    <path android:name="glass_amber" android:fillColor="#44FFD8A0" android:pathData="M76,37 C85,43 89,54 86,65 C81,60 75,55 68,52 C70,46 73,41 76,37 Z" />
+    <path android:name="glass_highlight" android:fillColor="#55FFFFFF" android:pathData="M33,34 C40,28 49,25 59,26 C48,28 40,33 35,42 C32,47 29,53 27,58 C26,48 28,40 33,34 Z" />
+    <path android:name="orb_edge" android:fillColor="#00000000" android:strokeColor="#A8FFFFFF" android:strokeWidth="1.3"
+        android:pathData="M21,54a33,33 0,1 0,66 0a33,33 0,1 0,-66 0" />
+    <path android:name="orbit_spark" android:fillColor="#FFFFE5BF" android:pathData="M87,26h2v6h-2zM85,28h6v2h-6z" />
+</vector>

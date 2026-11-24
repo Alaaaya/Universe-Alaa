@@ -18,11 +18,15 @@ class PhaseOneTest {
  private fun activity()=Robolectric.buildActivity(HomeActivity::class.java).setup().visible().get().also{it.screen.previewFixtures=true;it.screen.provider.testMode=true;it.screen.fixedClock="19:42";it.screen.home();layout(it)}
  private fun layout(a:HomeActivity){a.screen.measure(View.MeasureSpec.makeMeasureSpec(1920,1073741824),View.MeasureSpec.makeMeasureSpec(1080,1073741824));a.screen.layout(0,0,1920,1080);shadowOf(Looper.getMainLooper()).idle()}
  private fun key(a:HomeActivity,c:Int){a.dispatchKeyEvent(KeyEvent(0,c));a.dispatchKeyEvent(KeyEvent(1,c));layout(a)}
- private fun shot(a:HomeActivity,n:String){layout(a);val b=Bitmap.createBitmap(1920,1080,Bitmap.Config.ARGB_8888);a.screen.draw(Canvas(b));File("/home/kit/tmp/ua/red-shots").mkdirs();File("/home/kit/tmp/ua/red-shots/$n.png").outputStream().use{b.compress(Bitmap.CompressFormat.PNG,100,it)}}
+ private fun shot(a:HomeActivity,n:String){layout(a);val b=Bitmap.createBitmap(1920,1080,Bitmap.Config.ARGB_8888);a.screen.draw(Canvas(b));val out=File("build/test-artifacts/red-shots").apply{mkdirs()};File(out,"$n.png").outputStream().use{b.compress(Bitmap.CompressFormat.PNG,100,it)}}
 
  @Test fun prayerTheme(){
   val a=activity()
-  val config=PrayerTimes.extract(File("/home/kit/tmp/ua/mawaqit.html").readText())
+  // Synthetic, deterministic confData avoids depending on an untracked external HTML scrape.
+  val row=org.json.JSONArray().put("05:00").put("06:00").put("12:00").put("15:00").put("18:00").put("20:00")
+  val calendar=org.json.JSONArray();repeat(10){calendar.put(org.json.JSONObject())};calendar.put(9,org.json.JSONObject().put("29",row))
+  val fixture=org.json.JSONObject().put("times",org.json.JSONArray().put("05:00").put("12:00").put("15:00").put("18:00").put("20:00")).put("calendar",calendar)
+  val config=PrayerTimes.extract("<script>var confData = $fixture;</script>")
   val key=PrayerTimes.date()
   assertEquals(5,PrayerTimes.times(config,key,key)!!.size)
   a.getSharedPreferences("prayer-cache",0).edit().putString("config",config.toString()).putString("date",key).commit()
@@ -31,7 +35,7 @@ class PhaseOneTest {
   assertNull(PrayerTimes.times(org.json.JSONObject("{}"),key,key))
   a.screen.homeTheme="prayer";a.screen.fixedClock=null;a.screen.home();layout(a)
   val b=Bitmap.createBitmap(1920,1080,Bitmap.Config.ARGB_8888);a.screen.draw(Canvas(b))
-  File("/home/kit/tmp/ua/prayer-theme/home.png").outputStream().use{b.compress(Bitmap.CompressFormat.PNG,100,it)}
+  File("build/test-artifacts/prayer-theme").apply{mkdirs()};File("build/test-artifacts/prayer-theme/home.png").outputStream().use{b.compress(Bitmap.CompressFormat.PNG,100,it)}
   val stage=a.screen.getChildAt(0) as android.view.ViewGroup
   val settings=(0 until stage.childCount).map{stage.getChildAt(it)}.first{it.contentDescription=="Settings"}
   assertTrue(settings.requestFocus());key(a,23);assertEquals("themes",a.screen.page);a.finish()

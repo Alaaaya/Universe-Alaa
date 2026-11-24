@@ -18,6 +18,13 @@ class Stage(context: Context): ViewGroup(context) {
     private var touchY=0f
     private var dragging=false
     private val slots = mutableMapOf<View,Slot>()
+    // Background art is static for a screen. Rasterize once per Stage rather than rebuilding
+    // gradients and dozens of paths whenever a child (for example a focus ring) invalidates.
+    private var cachedBackground:Bitmap?=null
+    private var cachedBackgroundKey:String?=null
+    private val backgroundPaint=Paint(Paint.FILTER_BITMAP_FLAG)
+    internal var backgroundRenderCount=0
+        private set
     init { layoutDirection = LAYOUT_DIRECTION_LTR; setWillNotDraw(false) }
     fun put(v: View,x:Int,y:Int,w:Int,h:Int,font:Float?=null): View {
         slots[v]=Slot(x,y,w,h,font); addView(v); return v
@@ -95,25 +102,36 @@ class Stage(context: Context): ViewGroup(context) {
         if(theme==Atlas.ID){c.drawColor(Atlas.ink);return}
         if(theme=="harak"){c.drawColor(Harak.INK);return}
         if(theme=="red"){c.drawColor(Color.BLACK);return}
+        val key="$theme:$waves"
+        var bitmap=cachedBackground
+        if(bitmap==null || cachedBackgroundKey!=key || bitmap.isRecycled){
+            bitmap=renderBackground(theme,waves)
+            cachedBackground=bitmap;cachedBackgroundKey=key;backgroundRenderCount++
+        }
+        c.drawBitmap(bitmap,null,Rect(0,0,width,height),backgroundPaint)
+    }
+    private fun renderBackground(theme:String,waves:Boolean):Bitmap {
+        val bitmap=Bitmap.createBitmap(960,540,Bitmap.Config.ARGB_8888)
+        val canvas=Canvas(bitmap)
+        canvas.scale(960f/1920f,540f/1080f)
         val p=Paint(Paint.ANTI_ALIAS_FLAG)
         val base=when(theme){"gold"->0xff100f0a.toInt();"royal"->0xff061d55.toInt();else->0xff020b18.toInt()}
-        c.drawColor(base)
+        canvas.drawColor(base)
         val center=if(theme=="gold")0xff332e17.toInt() else if(theme=="royal")0xff073d85.toInt() else 0xff0a2442.toInt()
-        p.shader=RadialGradient(width*.50f,height*.35f,width*.63f,intArrayOf(center,base),null,Shader.TileMode.CLAMP)
-        c.drawRect(0f,0f,width.toFloat(),height.toFloat(),p);p.shader=null
-        c.save();c.scale(width/1920f,height/1080f)
+        p.shader=RadialGradient(1920*.50f,1080*.35f,1920*.63f,intArrayOf(center,base),null,Shader.TileMode.CLAMP)
+        canvas.drawRect(0f,0f,1920f,1080f,p);p.shader=null
         if(!waves) {
             p.style=Paint.Style.STROKE;p.strokeWidth=18f
-            for(i in 0..12){p.color=if(theme=="gold")0x103f3718 else 0x08477db7;c.drawOval(960f-180-i*90,370f-120-i*63,960f+180+i*90,370f+120+i*63,p)}
+            for(i in 0..12){p.color=if(theme=="gold")0x103f3718 else 0x08477db7;canvas.drawOval(960f-180-i*90,370f-120-i*63,960f+180+i*90,370f+120+i*63,p)}
         } else {
             p.style=Paint.Style.STROKE
             for(i in 0..40) {
                 p.strokeWidth=2f;p.color=if(theme=="gold")0x305b4c18 else 0x254d9edc
                 val path=Path().apply{moveTo(-100f,400f+i*8);cubicTo(450f,1350f+i*3,1150f,420f+i*9,2050f,1050f+i*3)}
-                c.drawPath(path,p)
+                canvas.drawPath(path,p)
             }
         }
-        c.restore()
+        return bitmap
     }
 }
 

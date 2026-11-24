@@ -23,6 +23,26 @@ class BrowseIndexTest {
         assertEquals(10,index.count("movie"));assertEquals(6,index.home.size)
         assertTrue(group.all{it.categoryId=="2"})
     }
+    @Test fun tenThousandChannelIndexBuildAndPageStayBounded() {
+        val source=ProviderSnapshot("10k fixture",null,
+            (0 until 10_000).map{MediaEntry("$it","Channel $it","${it%100}","live")},
+            (0 until 100).map{MediaCategory("$it","Group $it","live")})
+        val buildRuns=20
+        val buildStart=System.nanoTime()
+        repeat(buildRuns){BrowseIndex(source,{true})}
+        val buildMs=(System.nanoTime()-buildStart)/1_000_000.0/buildRuns
+        val index=BrowseIndex(source,{true})
+        val all=index.select("live","",emptySet(),emptySet())
+        var pageRows=0
+        val pageStart=System.nanoTime()
+        repeat(1000){pageRows+=BrowseIndex.page(all,(it*12)%10_000,12).size}
+        val pageMs=(System.nanoTime()-pageStart)/1_000_000.0
+        assertEquals(10_000,index.count("live"))
+        assertEquals(4,BrowseIndex.page(all,9_996,12).size)
+        assertEquals(11_992,pageRows)
+        System.out.println("10k index build mean: ${"%.3f".format(java.util.Locale.ROOT,buildMs)} ms (host JVM); 1000 bounded 12-row pages: ${"%.3f".format(java.util.Locale.ROOT,pageMs)} ms (host JVM)")
+    }
+
     @Test fun pageAccessIsBoundedAtDeepOffsetsAndEnds() {
         var reads=0
         val source=object:AbstractList<Int>(){

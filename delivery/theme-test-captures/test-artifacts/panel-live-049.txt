@@ -1,0 +1,1 @@
+Read-only exact owner playlist row; simulated authenticated panel transport; real HTTPS catalogue; Active; channels=9125

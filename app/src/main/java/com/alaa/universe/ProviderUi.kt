@@ -1,6 +1,7 @@
 package com.alaa.universe
 
 import android.app.AlertDialog
+import android.content.Context
 import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
@@ -93,6 +94,32 @@ class ProviderUi(private val screen:UniverseScreen) {
     private var nextCardFocus:Int?=null
     private var categoryOnlyView=false
     private val mediaOrder=MediaOrder(context.getSharedPreferences("media-order-v1",0))
+    private val sortPrefs=context.getSharedPreferences("media-sort-v1",0)
+    private fun sortKey(kind:String):String {
+        val scope=orderScope(false).take(2)+kind
+        val bytes=java.security.MessageDigest.getInstance("SHA-256").digest(org.json.JSONArray(scope).toString().toByteArray())
+        return "sort_"+bytes.joinToString(""){"%02x".format(it)}
+    }
+    private fun sortMode(kind:String)=sortPrefs.getString(sortKey(kind),"default")?:"default"
+    private fun sortLabel(kind:String)=when(sortMode(kind)){"year"->"السنة: الأحدث";"newest"->"الإضافات الأحدث";"popular"->"الأكثر مشاهدة";else->"ترتيب افتراضي"}
+    private fun sortMedia(values:List<MediaEntry>,kind:String):List<MediaEntry> = MediaSort.sort(values,kind,sortMode(kind))
+    private fun showSortOptions(kind:String){
+        if(kind=="live")return
+        val choices=arrayOf("ترتيب افتراضي","سنة الإصدار · الأحدث أولاً","الإضافات الأحدث أولاً","الأكثر مشاهدة")
+        PremiumDialogs.builder(context).setTitle("ترتيب ${if(kind=="movie")"الأفلام" else "المسلسلات"}").setItems(choices){_,which->
+            val value=listOf("default","year","newest","popular")[which]
+            if(value=="popular" && browseIndex?.all.orEmpty().none{it.kind==kind&&it.viewCount!=null}){
+                toast("المصدر ما بيوفر بيانات المشاهدات؛ ما في ترتيب شعبية موثوق.");return@setItems
+            }
+            if(value=="year" && browseIndex?.all.orEmpty().none{it.kind==kind&&it.releaseYear!=null}){
+                toast("المصدر ما بيوفر سنة إصدار للمحتوى؛ ما في ترتيب سنة موثوق.");return@setItems
+            }
+            if(value=="newest" && browseIndex?.all.orEmpty().none{it.kind==kind&&it.addedTimestamp!=null}){
+                toast("المصدر ما بيوفر تاريخ الإضافة؛ ما في ترتيب أحدث موثوق.");return@setItems
+            }
+            sortPrefs.edit().putString(sortKey(kind),value).apply();orderRevision++;browseLists.clear();browse(kind,categoryOnlyView)
+        }.show()
+    }
     private data class MoveTarget(val categoryRow:Boolean,val id:String)
     private val moveRows=mutableMapOf<View,MoveTarget>()
     private var moving:MediaMove?=null
@@ -141,7 +168,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         val entry=if(target.categoryRow)null else currentList.firstOrNull{it.id==target.id}
         val labels=mutableListOf("نقل")
         if(entry!=null)labels.add(if(identity(entry) in favorites)"احذف من المفضلة" else "أضف إلى المفضلة")
-        val menu=PremiumDialogs.builder(context).setItems(labels.toTypedArray()){_,which->
+        val menu=PremiumDialogs.builder(context).setTitle("خيارات العنصر").setItems(labels.toTypedArray()){_,which->
             clearMoveInput()
             if(scope!=orderScope(target.categoryRow))return@setItems
             if(which==0)beginMove(target)
@@ -240,7 +267,39 @@ class ProviderUi(private val screen:UniverseScreen) {
         return favoriteIds
     }
     private var recents=loadSet("recent")
-    val playback=PlaybackSession(context,{repository}){message->statusView?.text=message}
+    private fun playbackScope()=orderScope(false).take(2).joinToString("|")
+    private fun progressStore()=PlaybackProgressStore(context,playbackScope())
+    private fun settingKey(name:String):String {
+        val bytes=java.security.MessageDigest.getInstance("SHA-256").digest(playbackScope().toByteArray())
+        return name+"_"+bytes.joinToString(""){"%02x".format(it)}
+    }
+    private fun autoPlayNextEnabled()=context.getSharedPreferences("series-playback-settings-v1",0).getBoolean(settingKey("autoplay_next"),true)
+    private fun toggleAutoPlayNext(){
+        val prefs=context.getSharedPreferences("series-playback-settings-v1",0)
+        prefs.edit().putBoolean(settingKey("autoplay_next"),!autoPlayNextEnabled()).apply()
+        renderEpisodes()
+    }
+    private var endedPlaybackKey=""
+    private fun onPlaybackProgress(item:MediaEntry,position:Long,duration:Long,ended:Boolean){
+        if(ended){
+            progressStore().clear(item)
+            val key=identity(item)+":"+item.season
+            if(key==endedPlaybackKey)return
+            endedPlaybackKey=key
+            if(item.kind=="episode" && autoPlayNextEnabled() && selected?.kind=="series"){
+                val at=episodeList.indexOfFirst{it.id==item.id && it.season==item.season}
+                val next=episodeList.getOrNull(at+1)
+                if(at>=0 && next!=null){
+                    recents.add(identity(next));saveState()
+                    playChecked(next)
+                    if(full)fullscreen() else renderEpisodes()
+                }
+            }
+        } else progressStore().save(item,position,duration)
+    }
+    val playback=PlaybackSession(context,{repository},{message->statusView?.text=message},
+        progressChanged={item,position,duration,ended->onPlaybackProgress(item,position,duration,ended)},
+        seriesScope={selected?.takeIf{it.kind=="series"}?.id})
     private val panelNetwork=Executors.newSingleThreadExecutor()
     private val panelLoads=Executors.newSingleThreadExecutor()
     private val panel by lazy { PanelIntegration(
@@ -336,12 +395,29 @@ class ProviderUi(private val screen:UniverseScreen) {
     private fun toast(value:String){PremiumDialogs.toast(context,value,true)}
     fun loginDialog(){
         if(busy){toast("Playlist is updating");return}
-        val root=LinearLayout(context).apply{orientation=LinearLayout.VERTICAL;if(atlas)layoutDirection=View.LAYOUT_DIRECTION_LTR;setPadding(PremiumDialogs.dp(context,24),0,PremiumDialogs.dp(context,24),PremiumDialogs.dp(context,8))}
-        val device=LinearLayout(context).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(12,8,12,8);background=PremiumDialogs.surface(context,0xff1a2433.toInt())}
+        val root=LinearLayout(context).apply{
+            orientation=LinearLayout.VERTICAL
+            if(atlas)layoutDirection=View.LAYOUT_DIRECTION_LTR
+            setPadding(PremiumDialogs.dp(context,24),PremiumDialogs.dp(context,6),PremiumDialogs.dp(context,24),PremiumDialogs.dp(context,8))
+            if(atlas)background=PremiumDialogs.surface(context,0xff111629.toInt(),0xff6c5833.toInt())
+        }
+        val device=LinearLayout(context).apply{
+            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
+            setPadding(12,8,12,8)
+            background=PremiumDialogs.surface(context,if(atlas)0xff171d34.toInt() else 0xff1a2433.toInt(),if(atlas)0xff68552f.toInt() else 0x334f6077)
+        }
         device.addView(PremiumDialogs.text(context,panelSummary(),13f),LinearLayout.LayoutParams(0,-2,1f))
         device.addView(PremiumDialogs.button(context,"Copy"){(context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Device code",if(testMode)"" else panel.code));toast("Device code copied")})
         root.addView(device)
-        val tabs=LinearLayout(context).apply{orientation=LinearLayout.HORIZONTAL;setPadding(0,12,0,12)};root.addView(tabs,LinearLayout.LayoutParams(-1,PremiumDialogs.dp(context,80)))
+        root.addView(PremiumDialogs.text(context,if(atlas)"مصدر القنوات" else "Playlist source",14f).apply{
+            if(atlas){setTextColor(0xffe9bd70.toInt());setTypeface(android.graphics.Typeface.DEFAULT_BOLD);gravity=Gravity.LEFT or Gravity.CENTER_VERTICAL}
+        })
+        val tabs=LinearLayout(context).apply{
+            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
+            setPadding(PremiumDialogs.dp(context,8),PremiumDialogs.dp(context,8),PremiumDialogs.dp(context,8),PremiumDialogs.dp(context,8))
+            background=PremiumDialogs.surface(context,if(atlas)0xff0c1020.toInt() else 0xff151e2d.toInt(),if(atlas)0xff56482d.toInt() else 0x334f6077)
+        }
+        root.addView(tabs,LinearLayout.LayoutParams(-1,PremiumDialogs.dp(context,76)).apply{bottomMargin=PremiumDialogs.dp(context,12)})
         val xtream=LinearLayout(context).apply{orientation=LinearLayout.VERTICAL}
         val m3uGroup=LinearLayout(context).apply{orientation=LinearLayout.VERTICAL;visibility=View.GONE}
         fun field(parent:LinearLayout,label:String,hint:String,password:Boolean=false):EditText {
@@ -353,7 +429,8 @@ class ProviderUi(private val screen:UniverseScreen) {
                 if(atlas)gravity=Gravity.LEFT or Gravity.CENTER_VERTICAL
                 val icon=context.getDrawable(if(password)android.R.drawable.ic_lock_lock else android.R.drawable.ic_menu_edit)?.mutate()?.apply{setTint(PremiumDialogs.accent(context));setBounds(0,0,PremiumDialogs.dp(context,18),PremiumDialogs.dp(context,18))}
                 setCompoundDrawablesRelative(icon,null,null,null);compoundDrawablePadding=PremiumDialogs.dp(context,12)
-                background=PremiumDialogs.focus(context);setPadding(16,8,16,8);minimumHeight=PremiumDialogs.dp(context,48)
+                background=if(atlas)PremiumDialogs.surface(context,0xff11182a.toInt(),0xff514a3e.toInt()) else PremiumDialogs.focus(context)
+                setPadding(16,8,16,8);minimumHeight=PremiumDialogs.dp(context,48)
                 importantForAutofill=View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
                 parent.addView(this,LinearLayout.LayoutParams(-1,PremiumDialogs.dp(context,48)))
             }
@@ -369,22 +446,30 @@ class ProviderUi(private val screen:UniverseScreen) {
         var useM3u=false
         lateinit var xTab:Button;lateinit var mTab:Button
         fun select(m:Boolean){useM3u=m;xtream.visibility=if(m)View.GONE else View.VISIBLE;m3uGroup.visibility=if(m)View.VISIBLE else View.GONE
-            xTab.text=if(m)"Xtream" else "✓  Xtream";mTab.text=if(m)"✓  M3U URL" else "M3U URL"
+            xTab.text=(if(!m)"✓  " else "")+"Xtream"
+            mTab.text=(if(m)"✓  " else "")+"M3U URL"
             xTab.isSelected=!m;mTab.isSelected=m
-            xTab.setTextColor(if(m)Color.WHITE else 0xff090e17.toInt());mTab.setTextColor(if(m)0xff090e17.toInt() else Color.WHITE)
-            xTab.background=PremiumDialogs.focus(context,!m);mTab.background=PremiumDialogs.focus(context,m)
+            if(atlas){
+                xTab.setTextColor(if(m)0xffe5e9f4.toInt() else 0xff111629.toInt())
+                mTab.setTextColor(if(m)0xff111629.toInt() else 0xffe5e9f4.toInt())
+                xTab.background=PremiumDialogs.surface(context,if(m)0xff1b2541.toInt() else 0xffe9bd70.toInt(),0xffe9bd70.toInt())
+                mTab.background=PremiumDialogs.surface(context,if(m)0xffe9bd70.toInt() else 0xff1b2541.toInt(),0xffe9bd70.toInt())
+            }else{
+                xTab.setTextColor(if(m)Color.WHITE else 0xff090e17.toInt());mTab.setTextColor(if(m)0xff090e17.toInt() else Color.WHITE)
+                xTab.background=PremiumDialogs.focus(context,!m);mTab.background=PremiumDialogs.focus(context,m)
+            }
         }
-        xTab=PremiumDialogs.button(context,"✓  Xtream",true){select(false)}
+        xTab=PremiumDialogs.button(context,"Xtream",true){select(false)}
         mTab=PremiumDialogs.button(context,"M3U URL"){select(true)}
         tabs.addView(xTab,LinearLayout.LayoutParams(0,PremiumDialogs.dp(context,56),1f).apply{marginEnd=8})
         tabs.addView(mTab,LinearLayout.LayoutParams(0,PremiumDialogs.dp(context,56),1f))
         select(saved?.m3uUrl?.isNotBlank()==true)
         val http=CheckBox(context).apply{isChecked=saved?.allowHttp==true;text="Allow insecure HTTP (credentials may be exposed)";textSize=12f;buttonTintList=android.content.res.ColorStateList.valueOf(PremiumDialogs.accent(context));root.addView(this)}
-        val help=PremiumDialogs.text(context,"Use HTTPS where supported. Credentials stay encrypted on this device.",12f);root.addView(help)
-        root.addView(PremiumDialogs.button(context,"Remove saved playlist",danger=true){confirmRemove()},LinearLayout.LayoutParams(-2,PremiumDialogs.dp(context,48)))
+        val help=PremiumDialogs.text(context,if(atlas)"استخدم HTTPS إذا كان متاحاً. تُحفظ بيانات الدخول مشفّرة على هذا الجهاز." else "Use HTTPS where supported. Credentials stay encrypted on this device.",12f);root.addView(help)
+        root.addView(PremiumDialogs.button(context,if(atlas)"إزالة القائمة المحفوظة" else "Remove saved playlist",danger=true){confirmRemove()},LinearLayout.LayoutParams(-2,PremiumDialogs.dp(context,48)))
         val scroll=ScrollView(context).apply{isFillViewport=false;addView(root)}
-        val dialog=PremiumDialogs.builder(context).setTitle("Connect playlist").setView(scroll).setNegativeButton("Cancel",null)
-            .setPositiveButton("Connect",null).create()
+        val dialog=PremiumDialogs.builder(context).setTitle(if(atlas)"ربط قائمة القنوات" else "Connect playlist").setView(scroll).setNegativeButton(if(atlas)"إلغاء" else "Cancel",null)
+            .setPositiveButton(if(atlas)"ربط" else "Connect",null).create()
         var connecting=false
         dialog.setOnShowListener{PremiumDialogs.style(dialog);dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener{
             if(connecting)return@setOnClickListener
@@ -422,6 +507,18 @@ class ProviderUi(private val screen:UniverseScreen) {
         }}
         dialog.setOnCancelListener{repository.cancelConnect();busy=false;generation++}
         dialog.show()
+        if(atlas)dialog.window?.let{window->
+            val metrics=context.resources.displayMetrics
+            val width=minOf(PremiumDialogs.dp(context,1360),(metrics.widthPixels*.94f).toInt())
+            window.setLayout(width,WindowManager.LayoutParams.WRAP_CONTENT)
+            window.setBackgroundDrawable(PremiumDialogs.surface(context,0xff111629.toInt(),0xff80683d.toInt()))
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.apply{
+                setTextColor(0xff111629.toInt());background=PremiumDialogs.surface(context,0xffe9bd70.toInt(),0xffe9bd70.toInt())
+            }
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.apply{
+                setTextColor(0xffe9bd70.toInt());background=PremiumDialogs.surface(context,0xff1b2541.toInt(),0xff6c5833.toInt())
+            }
+        }
         dialog.getButton(-2)?.setOnClickListener{repository.cancelConnect();busy=false;generation++;dialog.dismiss()}
         if(atlas)dialog.window?.decorView?.layoutDirection=View.LAYOUT_DIRECTION_LTR
         dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
@@ -481,6 +578,29 @@ class ProviderUi(private val screen:UniverseScreen) {
             override fun onViewDetachedFromWindow(v:View){com.bumptech.glide.Glide.with(context).clear(image)}
         })
         if(image.isAttachedToWindow)load()
+    }
+    private fun detailsMetadata(e:MediaEntry):String = listOfNotNull(
+        e.releaseYear?.toString(),e.durationSeconds?.let{PlaybackProgressStore.formatTime(it*1000)},
+        e.rating?.takeIf{it>0}?.let{"★ ${"%.1f".format(java.util.Locale.ROOT,it)}"}
+    ).joinToString("  ·  ")
+    private fun showEpg(){
+        val channel=playback.entry?.takeIf{it.kind=="live"}?:selected?.takeIf{it.kind=="live"}?:run{toast("اختار قناة مباشرة أولاً");return}
+        val operation=runCatching{repository.prepareEpg(channel)}.getOrElse{toast("دليل البرامج غير متاح لهذا المصدر");return}
+        toast("عم حمّل دليل البرامج…")
+        worker.execute{
+            val result=runCatching{operation()}
+            main.post{
+                if(closed)return@post
+                result.onSuccess{programs->
+                    if(programs.isEmpty()){toast("ما في بيانات دليل برامج لهالقناة");return@onSuccess}
+                    val lines=programs.map{program->
+                        val times=listOfNotNull(program.startTimestamp?.let{java.text.SimpleDateFormat("HH:mm",java.util.Locale.getDefault()).format(java.util.Date(it*1000))},program.endTimestamp?.let{java.text.SimpleDateFormat("HH:mm",java.util.Locale.getDefault()).format(java.util.Date(it*1000))}).joinToString("–")
+                        listOf(times,program.title,program.description).filter{it.isNotBlank()}.joinToString("\n")
+                    }
+                    PremiumDialogs.builder(context).setTitle("دليل البرامج · ${channel.name}").setItems(lines.toTypedArray()){_,_->}.show()
+                }.onFailure{toast("ما قدرنا نحمّل دليل البرامج من المصدر")}
+            }
+        }
     }
     private fun button(s:String,x:Int,y:Int,w:Int,h:Int,action:()->Unit):TextView=
         if(atlas) Atlas.row(stage!!,s,x,y,w,h,action=action).apply{gravity=Gravity.LEFT or Gravity.CENTER_VERTICAL} else text(s,x,y,w,h).apply{
@@ -546,8 +666,11 @@ class ProviderUi(private val screen:UniverseScreen) {
         val work={
             val values=index.select(key.kind,key.category,fav,recent)
             val available=values.map{it.id}
-            val ids=key.draft?.let{MediaOrder.merge(it,available)}?:mediaOrder.ids(scope,available)
-            BrowseIndex.ordered(values,ids)
+            if(key.kind!="live" && sortMode(key.kind)!="default")sortMedia(values,key.kind)
+            else {
+                val ids=key.draft?.let{MediaOrder.merge(it,available)}?:mediaOrder.ids(scope,available)
+                BrowseIndex.ordered(values,ids)
+            }
         }
         val install:(List<MediaEntry>)->Unit={list->
             if(serial==indexSerial){
@@ -667,9 +790,7 @@ class ProviderUi(private val screen:UniverseScreen) {
             val title=selected?.takeIf{it.kind=="live"}?.name?:"Select a channel"
             text(title,if(harak)1288 else 990,if(harak)515 else 680,if(harak)588 else 882,90,35f)
             val open=button("Fullscreen",if(harak)1288 else 990,if(harak)620 else 800,if(harak)260 else 360,72){if(playback.entry!=null)fullscreen()}
-            val tracks=button("Audio / Subtitles",if(harak)1566 else 1375,if(harak)620 else 800,if(harak)310 else 480,72){playback.trackMenu()}
             val fav=button("Favorite",if(harak)1288 else 990,if(harak)718 else 890,if(harak)588 else 360,64){selected?.let{if(!favorites.add(identity(it)))favorites.remove(identity(it));saveState();toast("Favorites updated")}}
-            tracks.nextFocusLeftId=open.id;open.nextFocusRightId=tracks.id
             cards.forEach{it.nextFocusRightId=open.id};open.nextFocusLeftId=cards.firstOrNull()?.id?:open.id
             statusView=text(if(playback.player==null)"Select a channel to start playback" else "",if(harak)1288 else 990,if(harak)820 else 968,if(harak)588 else 870,50,24f)
             playback.zap={delta->zap(delta)}
@@ -678,6 +799,60 @@ class ProviderUi(private val screen:UniverseScreen) {
         text(if(moving!=null)"↑ ↓ Move   OK Save   BACK Cancel" else "${if(currentList.isEmpty())0 else offset+1}–${offset+items.size} / ${currentList.size}   Hold OK for options   BACK Home",if(harak)738 else 490,1015,if(harak)1138 else 1380,45,24f)
         focus(if(nextCatFocus!=null)catRows.getOrNull(nextCatFocus!!) else cards.getOrNull((nextCardFocus?:0).coerceAtMost(cards.lastIndex.coerceAtLeast(0)))?:catRows.firstOrNull());nextCatFocus=null;if(cards.isNotEmpty())nextCardFocus=null
     }
+    private fun showQuickSearch(){
+        if(!ensureBrowseIndex()){toast("المكتبة لسا عم تتحمّل");return}
+        val all=browseIndex?.all.orEmpty()
+        val edit=EditText(context).apply{
+            hint="ابحث عن قناة أو فيلم أو مسلسل"
+            inputType=InputType.TYPE_CLASS_TEXT
+            setSingleLine(true)
+            setPadding(PremiumDialogs.dp(context,18),PremiumDialogs.dp(context,12),PremiumDialogs.dp(context,18),PremiumDialogs.dp(context,12))
+        }
+        val list=ListView(context).apply{isFocusable=true;isFocusableInTouchMode=true;dividerHeight=1}
+        val box=LinearLayout(context).apply{orientation=LinearLayout.VERTICAL;setPadding(PremiumDialogs.dp(context,18),0,PremiumDialogs.dp(context,18),PremiumDialogs.dp(context,8));addView(edit,LinearLayout.LayoutParams(-1,PremiumDialogs.dp(context,60)));addView(list,LinearLayout.LayoutParams(-1,PremiumDialogs.dp(context,440)))}
+        val dialog=AlertDialog.Builder(context).setTitle("بحث سريع").setView(box).setNegativeButton("إغلاق",null).create()
+        var matches=emptyList<MediaEntry>()
+        fun showResults(values:List<MediaEntry>){
+            matches=values
+            val labels=values.map{e->"${when(e.kind){"live"->"قناة";"movie"->"فيلم";else->"مسلسل"}}  ·  ${e.name}"}
+            list.adapter=ArrayAdapter(context,android.R.layout.simple_list_item_1,labels)
+        }
+        var queryToken=0
+        var pending:Runnable?=null
+        edit.addTextChangedListener(object:android.text.TextWatcher{
+            override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){}
+            override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int){
+                val token=++queryToken;pending?.let{main.removeCallbacks(it)}
+                val q=s?.toString().orEmpty()
+                pending=Runnable{
+                    val run={MediaQuickSearch.search(all,q)}
+                    if(testMode)showResults(run()) else worker.execute{val result=run();main.post{if(dialog.isShowing&&token==queryToken)showResults(result)}}
+                }
+                main.postDelayed(pending!!,120)
+            }
+            override fun afterTextChanged(s:android.text.Editable?){}
+        })
+        list.setOnItemClickListener{_,_,position,_->
+            val entry=matches.getOrNull(position)?:return@setOnItemClickListener
+            dialog.dismiss()
+            selected=entry;recents.add(identity(entry));saveState()
+            when(entry.kind){
+                "live"->{mode="live";category="";offset=0;playChecked(entry);browse("live")}
+                "series"->{mode="series";category="";season=0;seasonOffset=0;episodeOffset=0;episodeList=emptyList();screen.seriesDetail()}
+                else->{mode="movie";category="";screen.movieDetail()}
+            }
+        }
+        dialog.setOnShowListener{
+            val width=minOf(PremiumDialogs.dp(context,1250),(context.resources.displayMetrics.widthPixels*.90f).toInt())
+            dialog.window?.setLayout(width,PremiumDialogs.dp(context,610))
+            edit.requestFocus()
+            edit.post{(context.getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager)?.showSoftInput(edit,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)}
+        }
+        dialog.show()
+        // setOnShowListener fires during show; repeat sizing after the decor has a window.
+        dialog.window?.setLayout(minOf(PremiumDialogs.dp(context,1250),(context.resources.displayMetrics.widthPixels*.90f).toInt()),PremiumDialogs.dp(context,610))
+    }
+
     // Only the visible pages get native Views and poster requests. Catalogue indexing and
     // custom ordering are already computed on the provider worker and cached by category.
     private fun browseAtlas(kind:String){
@@ -702,6 +877,13 @@ class ProviderUi(private val screen:UniverseScreen) {
         Atlas.section(s,"الفئات",xCat,169,Atlas.CATEGORY_W)
         Atlas.section(s,if(live)"دليل القنوات" else "رف المشاهدة",if(live)xLive else 54,169,if(live)Atlas.LIVE_W else 1402)
         if(!live)Atlas.chip(s,if(kind=="movie")"CINEMA" else "SERIES",54,168,127,38)
+        val sortAction=if(live)null else Atlas.row(s,sortLabel(kind),1240,169,310,42,23f){showSortOptions(kind)}.apply{tag="atlas-media-sort"}
+        val searchAction=Atlas.row(s,"بحث سريع",1570,169,296,42,23f){showQuickSearch()}.apply{
+            tag="atlas-quick-search";nextFocusLeftId=sortAction?.id?:back.id;nextFocusDownId=back.id
+        }
+        if(sortAction!=null){back.nextFocusRightId=sortAction.id;sortAction.nextFocusLeftId=back.id;sortAction.nextFocusRightId=searchAction.id}
+        else back.nextFocusRightId=searchAction.id
+        searchAction.nextFocusRightId=searchAction.id
         val categoryRows=BrowseIndex.page(cats,catOffset,Atlas.CAT_PAGE).mapIndexed{i,c->
             val title=when(c.id){""->"الكل";"favorites"->"المفضلة";"recent"->"المشاهدة الأخيرة";else->c.name}
             val y=top+84*i
@@ -785,6 +967,9 @@ class ProviderUi(private val screen:UniverseScreen) {
             v.nextFocusDownId=cards.getOrNull(i+step)?.id?:v.id
         }
         back.nextFocusDownId=(categoryRows.firstOrNull()?:cards.firstOrNull())?.id?:back.id
+        searchAction.nextFocusDownId=cards.firstOrNull()?.id?:categoryRows.firstOrNull()?.id?:back.id
+        sortAction?.nextFocusDownId=cards.firstOrNull()?.id?:categoryRows.firstOrNull()?.id?:back.id
+        categoryRows.firstOrNull()?.nextFocusUpId=searchAction.id
         if(items.isEmpty())Atlas.label(s,if(!indexReady()||listKey() in pendingLists)"جارٍ تحميل المكتبة…" else "لا يوجد محتوى في هذه الفئة",if(live)xLive else 54,408,if(live)Atlas.LIVE_W else 1397,65,32f,Atlas.muted)
         if(live){
             Atlas.section(s,"معاينة القناة",54,169,847)
@@ -799,11 +984,11 @@ class ProviderUi(private val screen:UniverseScreen) {
             }
             Atlas.chip(s,if(playback.entry==null)"بانتظار الاختيار" else "قيد التشغيل",686,711,183,41)
             Atlas.label(s,playback.entry?.name ?: "لا توجد قناة قيد التشغيل",78,758,795,55,37f,Atlas.fg,true)
-            val actions=listOf(
-                Atlas.row(s,"المفضلة",76,834,245,70,26f){selected?.takeIf{it.kind=="live"}?.let{if(!favorites.add(identity(it)))favorites.remove(identity(it));saveState();toast("تم تحديث المفضلة")}},
-                Atlas.row(s,"الصوت والترجمة",340,834,260,70,26f){playback.trackMenu()},
-                Atlas.row(s,"ملء الشاشة",619,834,259,70,26f){if(playback.entry!=null)fullscreen()}
+            val actions=mutableListOf(
+                Atlas.row(s,"المفضلة",76,834,245,70,26f){selected?.takeIf{it.kind=="live"}?.let{if(!favorites.add(identity(it)))favorites.remove(identity(it));saveState();toast("تم تحديث المفضلة")}}
             )
+            if(repository.login()?.m3uUrl.isNullOrBlank())actions.add(Atlas.row(s,"دليل البرامج",340,834,259,70,26f){showEpg()})
+            actions.add(Atlas.row(s,"ملء الشاشة",619,834,259,70,26f){if(playback.entry!=null)fullscreen()})
             actions.forEachIndexed{i,v->v.nextFocusLeftId=actions.getOrNull(i-1)?.id?:v.id;v.nextFocusRightId=actions.getOrNull(i+1)?.id?:cards.firstOrNull()?.id?:categoryRows.firstOrNull()?.id?:v.id;v.nextFocusUpId=back.id;v.nextFocusDownId=v.id}
             cards.forEach{it.nextFocusLeftId=actions.last().id}
             statusView=Atlas.label(s,"",78,918,795,46,23f,Atlas.muted)
@@ -853,10 +1038,15 @@ class ProviderUi(private val screen:UniverseScreen) {
             if(harak)Harak.label(stage!!,e.name,650,182,1170,90,48f,true)
             if(atlas)Atlas.label(stage!!,e.name,75,176,1130,82,52f,Atlas.fg,true,false)
             text(e.plot.ifBlank{if(atlas)"فيلم من قائمة المشاهدة المتصلة" else "Movie from your connected playlist"},if(atlas)75 else if(harak)650 else 720,if(harak)310 else if(atlas)286 else 220,1100,if(harak)280 else 400,if(harak)26f else 33f).apply{maxLines=8;gravity=Gravity.TOP or Gravity.LEFT}
-            val play=button(if(harak||atlas)"شاهد الآن" else "Play Movie",if(atlas)75 else if(harak)650 else 720,if(harak)670 else 800,480,90){playChecked(e);fullscreen()}
+            val metadata=detailsMetadata(e)
+            if(metadata.isNotBlank())text(metadata,if(atlas)75 else if(harak)650 else 720,if(atlas)704 else 630,1100,44,25f)
+            val point=progressStore().read()?.takeIf{it.kind=="movie" && it.id==e.id}
+            val playLabel=if(point!=null && atlas)"متابعة المشاهدة · ${PlaybackProgressStore.formatTime(point.positionMs)}" else if(harak||atlas)"شاهد الآن" else "Play Movie"
+            val play=button(playLabel,if(atlas)75 else if(harak)650 else 720,if(harak)670 else 800,if(point!=null&&atlas)470 else 480,90){playChecked(e,point?.positionMs?:0L);fullscreen()}
             if(harak)play.background=Harak.gold()
-            val fav=button(if(harak||atlas){if(identity(e) in favorites)"إزالة من المفضلة" else "إضافة إلى المفضلة"}else if(identity(e) in favorites)"Remove Favorite" else "Add Favorite",if(atlas)585 else if(harak)1160 else 1230,if(harak)670 else 800,570,90){if(!favorites.add(identity(e)))favorites.remove(identity(e));saveState();detail(false)}
-            play.nextFocusRightId=fav.id;fav.nextFocusLeftId=play.id;focus(play)
+            val start=if(point!=null&&atlas)button("ابدأ من البداية",560,800,335,90){playChecked(e,0L);fullscreen()} else null
+            val fav=button(if(harak||atlas){if(identity(e) in favorites)"إزالة من المفضلة" else "إضافة إلى المفضلة"}else if(identity(e) in favorites)"Remove Favorite" else "Add Favorite",if(atlas&&point!=null)920 else if(atlas)585 else if(harak)1160 else 1230,if(harak)670 else 800,if(atlas&&point!=null)450 else 570,90){if(!favorites.add(identity(e)))favorites.remove(identity(e));saveState();detail(false)}
+            play.nextFocusRightId=start?.id?:fav.id;start?.nextFocusLeftId=play.id;start?.nextFocusRightId=fav.id;fav.nextFocusLeftId=start?.id?:play.id;focus(play)
         } else {
             text(if(atlas)"جارٍ تحميل المواسم والحلقات…" else "Loading seasons and episodes…",if(atlas)75 else 720,220,1100,100,36f)
             val id=e.id
@@ -883,6 +1073,24 @@ class ProviderUi(private val screen:UniverseScreen) {
             Harak.label(stage!!,entry?.plot?.ifBlank{"اختر الموسم والحلقة لبدء المشاهدة"}.orEmpty(),624,270,1200,85,24f,false,Harak.MUTED).maxLines=2
             entry?.let{artwork(it,348,182,246,368)}
         }
+        val seriesEntry=selected
+        if(atlas && seriesEntry!=null){
+            val summary=seriesEntry.plot.ifBlank{"مسلسل من قائمة المشاهدة المتصلة"}
+            Atlas.label(stage!!,summary,130,169,1040,39,23f,Atlas.muted,right=false)
+            val metadata=detailsMetadata(seriesEntry)
+            if(metadata.isNotBlank())Atlas.label(stage!!,metadata,130,208,1040,34,21f,Atlas.mint,right=false)
+        }
+        val resumePoint=progressStore().read()?.takeIf{point->point.kind=="episode" && episodeList.any{it.id==point.id && it.season==point.season}}
+        var topAction:View?=null
+        if(atlas){
+            val auto=Atlas.row(stage!!,"التشغيل التلقائي للحلقة التالية: ${if(autoPlayNextEnabled())"مفعّل" else "متوقف"}",1190,105,390,48,22f,autoPlayNextEnabled()){toggleAutoPlayNext()}.apply{tag="atlas-autoplay-next"}
+            val resume=resumePoint?.let{point->
+                val episode=episodeList.first{it.id==point.id&&it.season==point.season}
+                Atlas.row(stage!!,"استكمال · ${PlaybackProgressStore.formatTime(point.positionMs)}",1590,105,276,48,22f,action={recents.add(identity(episode));saveState();playChecked(episode,point.positionMs);fullscreen()}).apply{tag="atlas-resume-episode"}
+            }
+            auto.nextFocusRightId=resume?.id?:auto.id;resume?.nextFocusLeftId=auto.id
+            topAction=auto
+        }
         val seasons=episodeList.map{it.season}.distinct().sorted()
         if(season !in seasons)season=seasons.firstOrNull()?:0
         if(seasons.isEmpty()){text(if(atlas)"لا توجد حلقات في هذا المصدر" else "No episodes returned by this provider",100,320,1700,100,38f);return}
@@ -890,7 +1098,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         val episodePage=if(harak)6 else 10
         seasonOffset=seasonOffset.coerceIn(0,maxOf(0,seasons.size-seasonPage))
         val rows=seasons.drop(seasonOffset).take(seasonPage).mapIndexed{i,n->
-            button(if(harak||atlas)"الموسم $n" else "Season $n",if(harak)348+i*304 else 80,if(harak)568 else 180+i*76,if(harak)286 else 470,70){season=n;episodeOffset=0;if(atlas)nextEpisodeFocus=0;renderEpisodes()}.also{v->
+            button(if(harak||atlas)"الموسم $n" else "Season $n",if(harak)348+i*304 else 80,if(harak)568 else if(atlas)252+i*76 else 180+i*76,if(harak)286 else 470,70){season=n;episodeOffset=0;if(atlas)nextEpisodeFocus=0;renderEpisodes()}.also{v->
                 v.setOnKeyListener{_,key,event->if(event.action!=0)false
                 else if(key==(if(harak)22 else 20)&&i==seasonPage-1&&seasonOffset+seasonPage<seasons.size){seasonOffset++;nextSeasonFocus=seasonPage-1;renderEpisodes();true}
                 else if(key==(if(harak)21 else 19)&&i==0&&seasonOffset>0){seasonOffset--;nextSeasonFocus=0;renderEpisodes();true}else false}
@@ -899,7 +1107,7 @@ class ProviderUi(private val screen:UniverseScreen) {
         val all=episodeList.filter{it.season==season}
         episodeOffset=episodeOffset.coerceIn(0,maxOf(0,all.size-1))
         val eps=all.drop(episodeOffset).take(episodePage).mapIndexed{i,e->
-            button(e.name,if(harak)348+(i%2)*778 else 620,if(harak)656+(i/2)*112 else 180+i*76,if(harak)750 else 1210,if(harak)100 else 70){recents.add(identity(e));saveState();playChecked(e);fullscreen()}.also{v->
+            button(e.name,if(harak)348+(i%2)*778 else 620,if(harak)656+(i/2)*112 else if(atlas)252+i*76 else 180+i*76,if(harak)750 else 1210,if(harak)100 else 70){recents.add(identity(e));saveState();playChecked(e);fullscreen()}.also{v->
                 v.setOnKeyListener{_,key,event->if(event.action!=0)false
                 else if(key==20&&i>=episodePage-(if(harak)2 else 1)&&episodeOffset+episodePage<all.size){episodeOffset+=episodePage;nextEpisodeFocus=0;renderEpisodes();true}
                 else if(key==19&&i<(if(harak)2 else 1)&&episodeOffset>0){episodeOffset=maxOf(0,episodeOffset-episodePage);nextEpisodeFocus=episodePage-1;renderEpisodes();true}else false}
@@ -927,6 +1135,7 @@ class ProviderUi(private val screen:UniverseScreen) {
             rows.forEach{it.nextFocusRightId=eps.firstOrNull()?.id?:it.id}
             eps.forEach{it.nextFocusLeftId=rows.firstOrNull()?.id?:it.id}
         }
+        if(atlas){topAction?.let{action->action.nextFocusDownId=rows.firstOrNull()?.id?:eps.firstOrNull()?.id?:action.id;rows.firstOrNull()?.nextFocusUpId=action.id}}
         text(if(atlas)"${all.size} حلقة   ·   ↑ ↓ المزيد من الحلقات" else "${all.size} episodes   ·   ↑ ↓ More episodes",620,985,1200,60,25f)
         focus(if(nextSeasonFocus!=null)rows.getOrNull(nextSeasonFocus!!) else if(atlas&&nextEpisodeFocus==null)rows.firstOrNull()?:eps.firstOrNull() else eps.getOrNull((nextEpisodeFocus?:0).coerceAtMost(eps.lastIndex.coerceAtLeast(0)))?:rows.firstOrNull());nextSeasonFocus=null;nextEpisodeFocus=null
     }
@@ -1115,9 +1324,10 @@ class ProviderUi(private val screen:UniverseScreen) {
         if(full){full=false;if(mode=="live")browse(mode) else {playback.stop();if(mode=="series")renderEpisodes() else detail(false)};return true}
         return false
     }
-    private fun playChecked(entry:MediaEntry) {
+    private fun playChecked(entry:MediaEntry,resumePositionMs:Long=0L) {
         if(panelSelected && !panel.tick())return
-        playback.play(entry)
+        endedPlaybackKey=""
+        playback.play(entry,resumePositionMs)
     }
     fun stop(){moving=null;clearMoveInput();foreground=false;main.removeCallbacks(panelTick);main.removeCallbacks(panelPoll);detailGeneration++;playback.stop();if(full){full=false;screen.home()}}
     fun close(){moving=null;clearMoveInput();closed=true;if(!testMode)panel.close();panelNetwork.shutdownNow();panelLoads.shutdownNow();main.removeCallbacks(panelTick);main.removeCallbacks(panelPoll);generation++;playback.stop();pictures.forEach{com.bumptech.glide.Glide.with(context).clear(it)};pictures.clear();worker.shutdownNow()}

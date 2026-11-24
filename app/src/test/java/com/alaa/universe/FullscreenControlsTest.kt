@@ -37,7 +37,7 @@ class FullscreenControlsTest {
    layout(a.screen);shadowOf(Looper.getMainLooper()).idle()
    val overlay=all(a.screen).filterIsInstance<FullscreenControls>().single()
    assertEquals(View.LAYOUT_DIRECTION_LTR,overlay.layoutDirection)
-   assertEquals(9,all(overlay).filterIsInstance<FullscreenControls.Control>().size)
+   assertEquals(12,all(overlay).filterIsInstance<FullscreenControls.Control>().size)
    assertFalse(all(overlay).filterIsInstance<TextView>().any{it.text.contains("@total")||it.text.contains("@time")})
    assertEquals(if(kind=="live")View.INVISIBLE else View.VISIBLE,all(overlay).filterIsInstance<FullscreenControls.Progress>().single().visibility)
    assertTrue(all(overlay).filterIsInstance<FullscreenControls.Control>().first{it.contentDescription=="Play or pause"}.hasFocus())

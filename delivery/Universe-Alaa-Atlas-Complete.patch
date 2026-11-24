@@ -1,0 +1,1317 @@
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index 7bd5b0a..f41afe3 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -3,7 +3,7 @@
+  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+  <uses-feature android:name="android.software.leanback" android:required="false"/>
+  <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
+- <application android:label="universe-Alaa" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false" android:supportsRtl="false" android:usesCleartextTraffic="true">
++ <application android:label="Universe Player" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false" android:supportsRtl="false" android:usesCleartextTraffic="true">
+   <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.updates" android:exported="false" android:grantUriPermissions="true">
+    <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/update_paths"/>
+   </provider>
+diff --git a/app/src/main/java/com/alaa/universe/ChannelOverlay.kt b/app/src/main/java/com/alaa/universe/ChannelOverlay.kt
+index ba265c4..560e803 100644
+--- a/app/src/main/java/com/alaa/universe/ChannelOverlay.kt
++++ b/app/src/main/java/com/alaa/universe/ChannelOverlay.kt
+@@ -36,14 +36,18 @@ class ChannelOverlay(context:Context,private val channels:List<MediaEntry>,priva
+         }
+     }
+     private fun renderAtlas(bindLogo:(MediaEntry,ImageView)->Unit){
+-        Atlas.block(stage,30,22,560,798,0xed161416.toInt(),24f,divider)
++        // Use the available vertical space and a wider cinema drawer, while keeping
++        // the same ten-row window so 9,000-channel lists stay bounded and responsive.
++        val panelX=30;val panelY=22;val panelW=720;val panelH=1036
++        val rowX=49;val rowW=682;val rowH=88;val rowStep=92;val rowTop=111
++        Atlas.block(stage,panelX,panelY,panelW,panelH,0xed161416.toInt(),24f,divider)
+         val back=BackButton.add(stage,gold,close)
+         stage.place(back,44,32,55,55)
+-        Atlas.label(stage,"جميع القنوات",126,32,370,55,32f,gold,true).gravity=Gravity.CENTER
+-        Atlas.icon(stage,R.drawable.ic_live_tv,528,42,36,gold)
+-        Atlas.block(stage,49,101,521,1,divider)
++        Atlas.label(stage,"جميع القنوات",126,32,510,55,32f,gold,true).gravity=Gravity.CENTER
++        Atlas.icon(stage,R.drawable.ic_live_tv,696,42,36,gold)
++        Atlas.block(stage,49,101,682,1,divider)
+         stage.swipe={x,y,dx,dy->
+-            if(x in 30f..590f && y in 112f..805f && kotlin.math.abs(dy)>kotlin.math.abs(dx)) {
++            if(x in 30f..750f && y in 112f..1045f && kotlin.math.abs(dy)>kotlin.math.abs(dx)) {
+                 val next=(atlasStart+if(dy<0)atlasPage else -atlasPage).coerceIn(0,(channels.size-atlasPage).coerceAtLeast(0))
+                 if(next!=atlasStart){atlasStart=next;at=next;render()}
+             }
+@@ -51,9 +55,9 @@ class ChannelOverlay(context:Context,private val channels:List<MediaEntry>,priva
+         BrowseIndex.page(channels,atlasStart,atlasPage).forEachIndexed{i,entry->
+             val index=atlasStart+i
+             val number=(index+1).toString().padStart(2,'0')
+-            val y=112+i*69
++            val y=rowTop+i*rowStep
+             val onAir=entry.id==playing
+-            val row=Atlas.label(stage,entry.name,49,y,521,63,26f,white,true,right=false).apply {
++            val row=Atlas.label(stage,entry.name,rowX,y,rowW,rowH,29f,white,true,right=false).apply {
+                 id=View.generateViewId();tag="atlas-drawer-row-$index"
+                 contentDescription="$number، ${entry.name}"
+                 isFocusable=true;isFocusableInTouchMode=true;isClickable=true
+@@ -63,11 +67,11 @@ class ChannelOverlay(context:Context,private val channels:List<MediaEntry>,priva
+                     addState(intArrayOf(),Atlas.shape(if(onAir)0x523c2e20 else 0x00161416,17f))
+                 }
+                 addOnLayoutChangeListener { v,_,t,_,b,_,ot,_,ob ->
+-                    if(b-t!=ob-ot){val scale=(b-t)/63f;v.setPadding((155*scale).toInt(),0,((if(onAir)58 else 14)*scale).toInt(),0)}
++                    if(b-t!=ob-ot){val scale=(b-t).toFloat()/rowH;v.setPadding((172*scale).toInt(),0,((if(onAir)70 else 18)*scale).toInt(),0)}
+                 }
+                 setOnClickListener{choose(entry)}
+             }
+-            Atlas.label(stage,number,57,y,66,63,25f,gold,true,right=false).apply {
++            Atlas.label(stage,number,57,y,66,rowH,28f,gold,true,right=false).apply {
+                 gravity=Gravity.CENTER;tag="atlas-drawer-number-$index";importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+             }
+             val logo=ImageView(context).apply {
+@@ -76,13 +80,13 @@ class ChannelOverlay(context:Context,private val channels:List<MediaEntry>,priva
+                 addOnLayoutChangeListener { v,_,t,_,b,_,ot,_,ob -> if(b-t!=ob-ot){val pad=(b-t)/9;v.setPadding(pad,pad,pad,pad)} }
+                 importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+             }
+-            stage.put(logo,134,y+8,47,47);bindLogo(entry,logo)
+-            Atlas.block(stage,194,y+13,1,37,divider)
++            stage.put(logo,137,y+15,58,58);bindLogo(entry,logo)
++            Atlas.block(stage,205,y+17,1,54,divider)
+             if(onAir){
+                 // Indicates the current channel, not measured signal strength.
+-                listOf(11,17,25,32).forEachIndexed{bar,height->Atlas.block(stage,524+bar*7,y+46-height,4,height,gold,2f)}
++                listOf(12,19,27,36).forEachIndexed{bar,height->Atlas.block(stage,682+bar*10,y+72-height,5,height,gold,2f)}
+             }
+-            if(i<atlasPage-1)Atlas.block(stage,58,y+66,502,1,divider)
++            if(i<atlasPage-1)Atlas.block(stage,58,y+rowH+1,663,1,divider)
+             if(index==at){row.requestFocus();back.nextFocusDownId=row.id;row.nextFocusUpId=back.id}
+         }
+     }
+diff --git a/app/src/main/java/com/alaa/universe/FullscreenControls.kt b/app/src/main/java/com/alaa/universe/FullscreenControls.kt
+index 3c77b9a..d38ac6b 100644
+--- a/app/src/main/java/com/alaa/universe/FullscreenControls.kt
++++ b/app/src/main/java/com/alaa/universe/FullscreenControls.kt
+@@ -70,11 +70,12 @@ class FullscreenControls(
+         total=label("",1370,930,302,30,22f).apply{gravity=Gravity.RIGHT}
+         label(if(live)copy("البث","Broadcast") else copy("الوقت المتبقي","Time left"),1730,873,160,30,21f).setTextColor(0xffbcc3cb.toInt())
+         remaining=label(if(live)copy("الآن","Real time") else "—",1730,914,170,44,28f)
+-        val specs=listOf("Previous" to "prev","Rewind 10 seconds" to "rewind","Play or pause" to "pause","Forward 10 seconds" to "forward","Next" to "next","Audio" to "audio","Subtitles" to "subs","Favorite" to "heart")
++        val specs=listOf("Previous" to "prev","Rewind 10 seconds" to "rewind","Play or pause" to "pause","Forward 10 seconds" to "forward","Next" to "next","Audio" to "audio","Subtitles" to "subs","Stream quality" to "quality","Playback speed" to "speed","Playback settings" to "gear","Favorite" to "heart")
++        val captions=listOf("السابق","ترجيع ١٠ ثوانٍ","تشغيل أو إيقاف مؤقت","تقديم ١٠ ثوانٍ","التالي","الصوت","الترجمة","الجودة","السرعة","الإعدادات","المفضلة")
+         specs.forEachIndexed{i,(name,icon)->
+             val size=if(i==2)92 else 74
+-            val x=listOf(608,696,784,890,978,1066,1154,1242)[i]
+-            val b=control(if(atlas)listOf("السابق","ترجيع ١٠ ثوانٍ","تشغيل أو إيقاف مؤقت","تقديم ١٠ ثوانٍ","التالي","الصوت","الترجمة","المفضلة")[i] else name,icon,x,if(i==2)969 else 978,size){
++            val x=listOf(432,520,608,714,802,890,978,1066,1154,1242,1330)[i]
++            val b=control(if(atlas)captions[i] else name,icon,x,if(i==2)969 else 978,size){
+                 when(i){
+                     0->previous()
+                     1->session.player?.seekBack()
+@@ -83,11 +84,15 @@ class FullscreenControls(
+                     4->next()
+                     5->session.tracks(C.TRACK_TYPE_AUDIO)
+                     6->session.tracks(C.TRACK_TYPE_TEXT)
+-                    7->{isFavorite=toggleFavorite();heart.selectedIcon=isFavorite}
++                    7->session.tracks(C.TRACK_TYPE_VIDEO)
++                    8->session.speedMenu()
++                    9->session.moreMenu()
++                    10->{isFavorite=toggleFavorite();heart.selectedIcon=isFavorite}
+                 };show();update()
+             }
+             if(i==2){pause=b;b.primary=true}
+-            if(i==7){heart=b;b.selectedIcon=isFavorite}
++            if(i==10){heart=b;b.selectedIcon=isFavorite}
++            if(live && i in listOf(5,6,8)){b.visibility=View.GONE;b.isFocusable=false;b.isEnabled=false}
+             if(live && (i==1||i==3)){b.isEnabled=false;b.isFocusable=false;b.alpha=.28f}
+         }
+         back.tag="universe-back"
+@@ -144,7 +149,7 @@ class FullscreenControls(
+         heart.visibility=View.VISIBLE;heart.isFocusable=true;heart.isFocusableInTouchMode=!PhoneInput.enabled(context);heart.alpha=1f
+         heart.bringToFront();heart.tag="atlas-player-favorite"
+         val quality=control("الجودة","hd",1560,850,125){show();session.tracks(C.TRACK_TYPE_VIDEO)}.apply{tag="atlas-player-quality"}
+-        val more=control("خيارات التشغيل","gear",1715,850,125){toggleAtlasTransport()}.apply{tag="atlas-player-more"}
++        val more=control("خيارات التشغيل","gear",1715,850,125){session.moreMenu();show()}.apply{tag="atlas-player-more"}
+         val row=listOf(channels,heart,quality,more)
+         row.forEachIndexed { i,v ->
+             stage.place(v,1250+i*154,851,144,147)
+@@ -156,18 +161,7 @@ class FullscreenControls(
+             if(i in 1..3)rule(1245+i*154,927,51)
+         }
+         back.bringToFront();back.nextFocusDownId=channels.id
+-        val panel=View(context).apply{background=Atlas.shape(0xf5121215.toInt(),24f,0xff816744.toInt(),1);visibility=View.GONE}
+-        stage.put(panel,774,677,1074,137);atlasTransportPanel=panel
+-        val transport=original.filterIsInstance<Control>().filter{it!==back && it!==heart && it.isEnabled}
+-        atlasTransport=transport
+-        transport.forEachIndexed{i,v->
+-            v.bringToFront();stage.place(v,798+i*207,691,195,108)
+-            v.goldStyle=true
+-            v.dockLabel=listOf("القناة السابقة","تشغيل / إيقاف","القناة التالية","الصوت","الترجمة")[i]
+-            v.nextFocusLeftId=transport.getOrNull(i-1)?.id?:v.id
+-            v.nextFocusRightId=transport.getOrNull(i+1)?.id?:v.id
+-            v.nextFocusUpId=back.id;v.nextFocusDownId=more.id
+-        }
++
+     }
+ 
+     private fun toggleAtlasTransport(){
+diff --git a/app/src/main/java/com/alaa/universe/PlaybackProgress.kt b/app/src/main/java/com/alaa/universe/PlaybackProgress.kt
+new file mode 100644
+index 0000000..be35085
+--- /dev/null
++++ b/app/src/main/java/com/alaa/universe/PlaybackProgress.kt
+@@ -0,0 +1,83 @@
++package com.alaa.universe
++
++import android.content.Context
++import org.json.JSONObject
++import java.security.MessageDigest
++import java.util.Locale
++
++/** Small payload-free viewing checkpoint; stream URLs and provider credentials are never persisted. */
++internal data class ResumePoint(
++    val id: String,
++    val kind: String,
++    val name: String,
++    val categoryId: String,
++    val season: Int,
++    val positionMs: Long,
++    val durationMs: Long
++)
++
++internal class PlaybackProgressStore(context: Context, scope: String) {
++    private val prefs = context.applicationContext.getSharedPreferences("playback-progress-v1", Context.MODE_PRIVATE)
++    private val key = "resume_" + MessageDigest.getInstance("SHA-256").digest(scope.toByteArray())
++        .joinToString("") { "%02x".format(it) }
++
++    fun read(): ResumePoint? = runCatching {
++        val j = prefs.getString(key, null)?.let(::JSONObject) ?: return null
++        ResumePoint(j.getString("id"), j.getString("kind"), j.getString("name"), j.getString("categoryId"),
++            j.optInt("season"), j.getLong("positionMs"), j.getLong("durationMs"))
++    }.getOrNull()?.takeIf { it.kind in setOf("movie", "episode") && it.positionMs > 0 && it.durationMs > 0 }
++
++    fun save(entry: MediaEntry, positionMs: Long, durationMs: Long) {
++        if (entry.kind !in setOf("movie", "episode") || entry.id.isBlank() || durationMs <= 0 || positionMs <= 0) return
++        if (positionMs >= durationMs - 15_000L) { clear(entry); return }
++        val j = JSONObject().put("id", entry.id).put("kind", entry.kind).put("name", entry.name)
++            .put("categoryId", entry.categoryId).put("season", entry.season)
++            .put("positionMs", positionMs).put("durationMs", durationMs)
++        prefs.edit().putString(key, j.toString()).apply()
++    }
++
++    fun clear(entry: MediaEntry? = null) {
++        val current = read()
++        if (entry == null || current?.id == entry.id && current.kind == entry.kind) prefs.edit().remove(key).apply()
++    }
++
++    companion object {
++        fun formatTime(ms: Long): String {
++            val total = (ms.coerceAtLeast(0) / 1000).toInt()
++            return if (total >= 3600) String.format(Locale.ROOT, "%d:%02d:%02d", total / 3600, total / 60 % 60, total % 60)
++            else String.format(Locale.ROOT, "%d:%02d", total / 60, total % 60)
++        }
++    }
++}
++
++/** Bounded search over the already-loaded catalogue; no network calls and no extra entry views. */
++internal object MediaQuickSearch {
++    fun search(entries: List<MediaEntry>, query: String, limit: Int = 60): List<MediaEntry> {
++        val q = query.trim().lowercase(Locale.ROOT)
++        if (q.isEmpty() || limit <= 0) return emptyList()
++        return entries.asSequence()
++            .filter { it.kind in setOf("live", "movie", "series") }
++            .mapNotNull { e ->
++                val name = e.name.trim().lowercase(Locale.ROOT)
++                if (!name.contains(q)) null else (if (name.startsWith(q)) 0 else 1) to e
++            }
++            .sortedWith(compareBy<Pair<Int, MediaEntry>> { it.first })
++            .take(limit).map { it.second }.toList()
++    }
++}
++
++internal object MediaSort {
++    fun sort(values: List<MediaEntry>, kind: String, mode: String): List<MediaEntry> {
++        if (kind == "live" || mode == "default") return values
++        val indexed = values.withIndex()
++        return when (mode) {
++            "year" -> indexed.sortedWith(compareBy<IndexedValue<MediaEntry>> { it.value.releaseYear == null }
++                .thenByDescending { it.value.releaseYear }.thenBy { it.index }).map { it.value }
++            "newest" -> indexed.sortedWith(compareBy<IndexedValue<MediaEntry>> { it.value.addedTimestamp == null }
++                .thenByDescending { it.value.addedTimestamp }.thenBy { it.index }).map { it.value }
++            "popular" -> indexed.sortedWith(compareBy<IndexedValue<MediaEntry>> { it.value.viewCount == null }
++                .thenByDescending { it.value.viewCount }.thenBy { it.index }).map { it.value }
++            else -> values
++        }
++    }
++}
+diff --git a/app/src/main/java/com/alaa/universe/PlaybackSession.kt b/app/src/main/java/com/alaa/universe/PlaybackSession.kt
+index 66edb9b..6ca0028 100644
+--- a/app/src/main/java/com/alaa/universe/PlaybackSession.kt
++++ b/app/src/main/java/com/alaa/universe/PlaybackSession.kt
+@@ -2,6 +2,10 @@ package com.alaa.universe
+ 
+ import android.app.AlertDialog
+ import android.content.Context
++import android.os.Handler
++import android.os.Looper
++import org.json.JSONObject
++import java.security.MessageDigest
+ import android.view.KeyEvent
+ import android.view.View
+ import android.view.WindowManager
+@@ -13,10 +17,19 @@ import androidx.media3.datasource.DataSource
+ import androidx.media3.exoplayer.ExoPlayer
+ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+ import androidx.media3.ui.PlayerView
++import androidx.media3.ui.CaptionStyleCompat
++import android.graphics.Color
++import android.graphics.Typeface
+ 
+ /** One foreground player. No URL, credentials, errors or analytics are logged by this app. */
+ @androidx.annotation.OptIn(UnstableApi::class)
+-class PlaybackSession(private val context:Context, private val repositoryProvider:()->ProviderRepository, private val status:(String)->Unit) {
++class PlaybackSession(
++    private val context:Context,
++    private val repositoryProvider:()->ProviderRepository,
++    private val status:(String)->Unit,
++    private val progressChanged:(MediaEntry,Long,Long,Boolean)->Unit = { _,_,_,_-> },
++    private val seriesScope:()->String? = { null }
++) {
+     constructor(context:Context, fixed:ProviderRepository, status:(String)->Unit):this(context,{fixed},status)
+     private val repository get()=repositoryProvider()
+     init { androidx.media3.common.util.Log.setLogLevel(androidx.media3.common.util.Log.LOG_LEVEL_OFF) }
+@@ -24,6 +37,19 @@ class PlaybackSession(private val context:Context, private val repositoryProvide
+     private var view:PlayerView?=null
+     var entry:MediaEntry?=null; private set
+     var zap:((Int)->Unit)?=null
++    private val progressHandler=Handler(Looper.getMainLooper())
++    private val trackPrefs=context.applicationContext.getSharedPreferences("playback-track-preferences-v1",Context.MODE_PRIVATE)
++    private var lastAppliedTrackKey=""
++    private val progressTick=object:Runnable{override fun run(){
++        checkpoint()
++        if(player?.isPlaying==true)progressHandler.postDelayed(this,10_000L)
++    }}
++    private fun checkpoint(ended:Boolean=false){
++        val current=entry?:return
++        val p=player?:return
++        runCatching{progressChanged(current,p.currentPosition.coerceAtLeast(0),p.duration.takeIf{it>0}?:0L,ended)}
++    }
++    private fun scheduleCheckpoint(){progressHandler.removeCallbacks(progressTick);if(player?.isPlaying==true)progressHandler.postDelayed(progressTick,10_000L)}
+     fun attach(target:PlayerView) {
+         if(view===target){if(target.player!==player)target.player=player;return}
+         view?.player=null;view=target
+@@ -32,8 +58,10 @@ class PlaybackSession(private val context:Context, private val repositoryProvide
+         target.setShowSubtitleButton(true)
+         target.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+     }
+-    fun play(item:MediaEntry) {
++    fun play(item:MediaEntry,resumePositionMs:Long=0L) {
+         try {
++            checkpoint()
++            progressHandler.removeCallbacks(progressTick)
+             val url=repository.streamUrl(item)
+             val p=player?:ExoPlayer.Builder(context)
+                 .setMediaSourceFactory(DefaultMediaSourceFactory(DataSource.Factory {
+@@ -47,16 +75,23 @@ class PlaybackSession(private val context:Context, private val repositoryProvide
+                     it.addListener(object:Player.Listener {
+                         override fun onPlaybackStateChanged(state:Int) {
+                             status(when(state){Player.STATE_READY->"";Player.STATE_BUFFERING->"Buffering…";Player.STATE_ENDED->"Playback ended";else->""})
++                            if(state==Player.STATE_ENDED)checkpoint(ended=true) else if(state==Player.STATE_READY)checkpoint()
++                            scheduleCheckpoint()
+                         }
++                        override fun onTracksChanged(tracks:Tracks) { applySavedTrackPreferences();applySubtitleStyle() }
+                         override fun onPlayerError(error:PlaybackException) {status("Unable to play this stream. Check connection or choose another item.")}
+                     })
+                 }
+             entry=item
++            lastAppliedTrackKey=""
+             p.trackSelectionParameters=p.trackSelectionParameters.buildUpon()
+                 .clearOverridesOfType(C.TRACK_TYPE_AUDIO).clearOverridesOfType(C.TRACK_TYPE_TEXT).build()
+             view?.player=p
+             p.setMediaItem(MediaItem.Builder().setUri(url).setMediaMetadata(MediaMetadata.Builder().setTitle(item.name).build()).build())
+-            p.prepare();p.play()
++            p.prepare()
++            applySubtitleStyle()
++            if(resumePositionMs>0L)p.seekTo(resumePositionMs)
++            p.play();scheduleCheckpoint()
+             (context as? Activity)?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+         } catch (_:Exception) {status("Stream unavailable. Check playlist settings.")}
+     }
+@@ -70,7 +105,7 @@ class PlaybackSession(private val context:Context, private val repositoryProvide
+             KeyEvent.KEYCODE_MEDIA_PLAY->{p.play();return true}
+             KeyEvent.KEYCODE_MEDIA_PAUSE->{p.pause();return true}
+             KeyEvent.KEYCODE_CAPTIONS->{tracks(C.TRACK_TYPE_TEXT);return true}
+-            KeyEvent.KEYCODE_MENU->{trackMenu();return true}
++            KeyEvent.KEYCODE_MENU->{if(entry?.kind in setOf("movie","episode")){trackMenu();return true}}
+         }
+         if(view?.isControllerFullyVisible!=true){
+             when(event.keyCode){
+@@ -83,12 +118,100 @@ class PlaybackSession(private val context:Context, private val repositoryProvide
+         }
+         return false
+     }
+-    fun trackMenu(){PremiumDialogs.builder(context).setTitle("Playback options").setItems(arrayOf("Audio","Subtitles","Aspect ratio")){_,i->
+-        when(i){0->tracks(C.TRACK_TYPE_AUDIO);1->tracks(C.TRACK_TYPE_TEXT);else->PremiumDialogs.builder(context).setTitle("Aspect ratio").setItems(arrayOf("Fit","Fill","Zoom")){_,n->
++    private fun subtitleStyleKey():String?=trackPreferenceKey(999)
++    private fun applySubtitleStyle(){
++        val key=subtitleStyleKey()?:return
++        val saved=runCatching{trackPrefs.getString("subtitle_style_$key",null)?.let(::JSONObject)}.getOrNull()?:return
++        val size=saved.optInt("size",1)
++        val background=saved.optBoolean("background",true)
++        view?.subtitleView?.apply{
++            setFractionalTextSize(when(size){0->0.045f;2->0.075f;else->0.06f})
++            setStyle(CaptionStyleCompat(Color.WHITE,if(background)0xd9000000.toInt() else Color.TRANSPARENT,
++                Color.TRANSPARENT,CaptionStyleCompat.EDGE_TYPE_OUTLINE,Color.BLACK,Typeface.DEFAULT))
++        }
++    }
++    fun subtitleAppearanceMenu(){
++        if(entry?.kind !in setOf("movie","episode"))return
++        val key=subtitleStyleKey()?:return
++        val prefs=trackPrefs
++        val saved=runCatching{prefs.getString("subtitle_style_$key",null)?.let(::JSONObject)}.getOrNull()?:JSONObject()
++        val size=saved.optInt("size",1);val background=saved.optBoolean("background",true)
++        val options=arrayOf("حجم صغير","حجم متوسط","حجم كبير",if(background)"إخفاء خلفية الترجمة" else "إظهار خلفية الترجمة")
++        PremiumDialogs.builder(context).setTitle("مظهر الترجمة").setSingleChoiceItems(options, -1){dialog,which->
++            val next=saved
++            when(which){0,1,2->next.put("size",which);3->next.put("background",!background)}
++            prefs.edit().putString("subtitle_style_$key",next.toString()).apply()
++            applySubtitleStyle();dialog.dismiss()
++        }.show()
++    }
++    fun sleepTimerMenu(){
++        val options=arrayOf("إيقاف المؤقت","15 دقيقة","30 دقيقة","45 دقيقة","60 دقيقة","90 دقيقة")
++        PremiumDialogs.builder(context).setTitle("مؤقت النوم").setItems(options){_,which->
++            if(which==0){sleepHandler.removeCallbacks(sleepStop);status("Sleep timer off")}
++            else {sleepHandler.removeCallbacks(sleepStop);sleepHandler.postDelayed(sleepStop,longArrayOf(0,15,30,45,60,90)[which]*60_000L);status("Sleep timer set")}
++        }.show()
++    }
++    private val sleepHandler=Handler(Looper.getMainLooper())
++    private val sleepStop=Runnable{player?.pause();checkpoint();status("Sleep timer finished")}
++    fun moreMenu(){
++        val vod=entry?.kind in setOf("movie","episode")
++        val items=mutableListOf<Pair<String,()->Unit>>()
++        if(vod){items.add("Audio track" to {tracks(C.TRACK_TYPE_AUDIO)});items.add("Subtitle track" to {tracks(C.TRACK_TYPE_TEXT)});items.add("Subtitle appearance" to {subtitleAppearanceMenu()});items.add("Playback speed" to {speedMenu()})}
++        items.add("Aspect ratio" to {aspectRatioMenu()});items.add("Sleep timer" to {sleepTimerMenu()})
++        PremiumDialogs.builder(context).setTitle("Playback options").setItems(items.map{it.first}.toTypedArray()){_,i->items.getOrNull(i)?.second?.invoke()}.show()
++    }
++    fun aspectRatioMenu(){
++        PremiumDialogs.builder(context).setTitle("Aspect ratio").setItems(arrayOf("Fit","Fill","Zoom")){_,n->
+             view?.resizeMode=when(n){1->androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL;2->androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM;else->androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT}
+-        }.show()}
+-    }.show()}
++        }.show()
++    }
++    fun speedMenu(){
++        if(entry?.kind !in setOf("movie","episode"))return
++        val p=player?:return
++        val speeds=floatArrayOf(0.5f,0.75f,1f,1.25f,1.5f,2f)
++        val labels=speeds.map{speed->(if(kotlin.math.abs(p.playbackParameters.speed-speed)<0.01f)"✓ " else "")+"${speed}×"}.toTypedArray()
++        PremiumDialogs.builder(context).setTitle("Playback speed").setItems(labels){_,which->p.setPlaybackSpeed(speeds[which])}.show()
++    }
++    fun trackMenu()=moreMenu()
++    private fun trackPreferenceKey(type:Int):String? {
++        val current=entry?:return null
++        val scope=when(current.kind){
++            "episode"->seriesScope()?.takeIf{it.isNotBlank()}?.let{"series:$it"} ?: return null
++            "movie"->"movie:${current.id}"
++            else->return null
++        }
++        val bytes=MessageDigest.getInstance("SHA-256").digest(scope.toByteArray())
++        return "${bytes.joinToString(""){"%02x".format(it)}}:$type"
++    }
++    private fun rememberTrack(type:Int,format:Format?) {
++        if(type !in listOf(C.TRACK_TYPE_AUDIO,C.TRACK_TYPE_TEXT))return
++        val key=trackPreferenceKey(type)?:return
++        if(format==null){trackPrefs.edit().remove(key).apply();return}
++        trackPrefs.edit().putString(key,JSONObject().put("language",format.language?:"").put("label",format.label?:"").toString()).apply()
++    }
++    private fun applySavedTrackPreferences(){
++        val p=player?:return
++        val current=entry?:return
++        if(current.kind !in setOf("movie","episode"))return
++        for(type in listOf(C.TRACK_TYPE_AUDIO,C.TRACK_TYPE_TEXT)){
++            val key=trackPreferenceKey(type)?:continue
++            val token="$key:${current.id}:${current.season}"
++            if(token==lastAppliedTrackKey)continue
++            val saved=runCatching{trackPrefs.getString(key,null)?.let(::JSONObject)}.getOrNull()?:continue
++            val language=saved.optString("language");val label=saved.optString("label")
++            val option=p.currentTracks.groups.asSequence().filter{it.type==type}.flatMap{g->
++                (0 until g.length).asSequence().filter{g.isTrackSupported(it)}.map{g to it}
++            }.map{(g,i)->Triple(g,i,g.getTrackFormat(i))}.firstOrNull{(_,_,f)->
++                (language.isNotBlank() && f.language.equals(language,true)) || (label.isNotBlank() && f.label==label)
++            } ?: continue
++            p.trackSelectionParameters=p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(type,false)
++                .setOverrideForType(TrackSelectionOverride(option.first.mediaTrackGroup,option.second)).build()
++            lastAppliedTrackKey=token
++        }
++    }
+     fun tracks(type:Int){
++        val current=entry?:return
++        if(type in listOf(C.TRACK_TYPE_AUDIO,C.TRACK_TYPE_TEXT) && current.kind !in setOf("movie","episode"))return
+         val p=player?:return
+         val options=mutableListOf<Pair<Tracks.Group,Int>>()
+         p.currentTracks.groups.filter{it.type==type}.forEach{g->repeat(g.length){if(g.isTrackSupported(it))options.add(g to it)}}
+@@ -99,10 +222,17 @@ class PlaybackSession(private val context:Context, private val repositoryProvide
+         if(options.isEmpty())labels.add("No supported embedded tracks")
+         PremiumDialogs.builder(context).setTitle(if(type==C.TRACK_TYPE_TEXT)"Subtitles" else if(type==C.TRACK_TYPE_VIDEO)"Quality" else "Audio")
+             .setItems(labels.toTypedArray()){_,i->
+-                if(i==0)p.trackSelectionParameters=p.trackSelectionParameters.buildUpon().clearOverridesOfType(type).setTrackTypeDisabled(type,type==C.TRACK_TYPE_TEXT).build()
+-                else options.getOrNull(i-1)?.let{(g,n)->p.trackSelectionParameters=p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(type,false).setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup,n)).build()}
++                if(i==0){
++                    p.trackSelectionParameters=p.trackSelectionParameters.buildUpon().clearOverridesOfType(type).setTrackTypeDisabled(type,type==C.TRACK_TYPE_TEXT).build()
++                    rememberTrack(type,null)
++                } else options.getOrNull(i-1)?.let{(g,n)->
++                    p.trackSelectionParameters=p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(type,false).setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup,n)).build()
++                    rememberTrack(type,g.getTrackFormat(n));lastAppliedTrackKey=""
++                }
+             }.show()
+     }
+-    fun stop(){view?.player=null;view=null;player?.release();player=null;entry=null
++    fun stop(){
++        checkpoint();progressHandler.removeCallbacks(progressTick);sleepHandler.removeCallbacks(sleepStop)
++        view?.player=null;view=null;player?.release();player=null;entry=null;lastAppliedTrackKey=""
+         (context as? Activity)?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)}
+ }
+diff --git a/app/src/main/java/com/alaa/universe/ProviderRepository.kt b/app/src/main/java/com/alaa/universe/ProviderRepository.kt
+index 800e8d2..3ebec2b 100644
+--- a/app/src/main/java/com/alaa/universe/ProviderRepository.kt
++++ b/app/src/main/java/com/alaa/universe/ProviderRepository.kt
+@@ -13,10 +13,11 @@ import java.security.MessageDigest
+ data class ProviderLogin(val name: String, val server: String, val username: String = "", val password: String = "", val m3uUrl: String = "", val allowHttp: Boolean = false) {
+     override fun toString() = "ProviderLogin(redacted)"
+ }
+-data class MediaEntry(val id: String, val name: String, val categoryId: String, val kind: String, val icon: String = "", val extension: String = "mp4", val directUrl: String = "", val season: Int = 0, val plot: String = "", val categoryIds: Set<String> = setOf(categoryId)) {
++data class MediaEntry(val id: String, val name: String, val categoryId: String, val kind: String, val icon: String = "", val extension: String = "mp4", val directUrl: String = "", val season: Int = 0, val plot: String = "", val categoryIds: Set<String> = setOf(categoryId), val releaseYear: Int? = null, val addedTimestamp: Long? = null, val viewCount: Long? = null, val rating: Double? = null, val durationSeconds: Long? = null) {
+     override fun toString() = "MediaEntry(redacted)"
+ }
+ data class MediaCategory(val id: String, val name: String, val kind: String)
++data class EpgProgram(val title:String,val description:String,val startTimestamp:Long?,val endTimestamp:Long?)
+ data class ProviderSnapshot(val name: String, val expires: Long?, val entries: List<MediaEntry>, val categories: List<MediaCategory>, val updated: Long = System.currentTimeMillis()) {
+     /** Expiry is Unix seconds, as supplied by Xtream. Null means unknown/unlimited, not expired. */
+     fun daysLeft(nowMillis: Long = System.currentTimeMillis()): Long? =
+@@ -33,8 +34,15 @@ data class ProviderSnapshot(val name: String, val expires: Long?, val entries: L
+ private fun objects(a: JSONArray): List<JSONObject> = (0 until a.length()).map { a.getJSONObject(it) }
+ private fun entryJson(e: MediaEntry) = JSONObject().put("id", e.id).put("name", e.name).put("categoryId", e.categoryId)
+     .put("kind", e.kind).put("icon", e.icon).put("extension", e.extension).put("directUrl", e.directUrl).put("season", e.season).put("plot", e.plot).put("categoryIds", JSONArray(e.categoryIds.toList()))
++    .put("releaseYear",e.releaseYear?:JSONObject.NULL).put("addedTimestamp",e.addedTimestamp?:JSONObject.NULL).put("viewCount",e.viewCount?:JSONObject.NULL)
++    .put("rating",e.rating?:JSONObject.NULL).put("durationSeconds",e.durationSeconds?:JSONObject.NULL)
+ private fun entryFromJson(j: JSONObject) = MediaEntry(j.getString("id"), j.getString("name"), j.getString("categoryId"), j.getString("kind"),
+-    j.optString("icon"), j.optString("extension", "mp4"), j.optString("directUrl"), j.optInt("season"), j.optString("plot"), j.optJSONArray("categoryIds")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } ?: setOf(j.getString("categoryId")))
++    j.optString("icon"), j.optString("extension", "mp4"), j.optString("directUrl"), j.optInt("season"), j.optString("plot"), j.optJSONArray("categoryIds")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } ?: setOf(j.getString("categoryId")),
++    j.optInt("releaseYear").takeIf{j.has("releaseYear")&&!j.isNull("releaseYear")},
++    j.optLong("addedTimestamp").takeIf{j.has("addedTimestamp")&&!j.isNull("addedTimestamp")},
++    j.optLong("viewCount").takeIf{j.has("viewCount")&&!j.isNull("viewCount")},
++    j.optDouble("rating").takeIf{j.has("rating")&&!j.isNull("rating")},
++    j.optLong("durationSeconds").takeIf{j.has("durationSeconds")&&!j.isNull("durationSeconds")})
+ 
+ /** Blocking API. Call on an IO worker, never the Android main thread. No network response is logged. */
+ class ProviderRepository internal constructor(private val vault: CredentialVault, private val testFetch: ((String) -> String)? = null) {
+@@ -264,6 +272,26 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
+         } }
+         operation
+     }
++    internal fun prepareEpg(entry:MediaEntry):()->List<EpgProgram> = safe {
++        require(entry.kind=="live") { "Program guide is only available for live channels." }
++        val request=synchronized(stateLock){ensureLoaded();(activeLogin?:error("Connect a provider first.")) to generation}
++        val login=request.first;val ticket=request.second
++        require(login.m3uUrl.isBlank()) { "This M3U source does not provide a program guide." }
++        check(isVisible(entry)) { "Channel is no longer available." }
++        val operation:()->List<EpgProgram> = { safe {
++            checkTicket(ticket)
++            val json=JSONObject(fetch(api(login,"get_short_epg","stream_id" to entry.id)+"&limit=10",login,ticket))
++            val rows=json.optJSONArray("epg_listings")?:return@safe emptyList()
++            fun decoded(raw:String):String=runCatching{String(java.util.Base64.getDecoder().decode(raw),Charsets.UTF_8)}.getOrDefault(raw).ifBlank{raw}
++            (0 until rows.length()).mapNotNull{i->
++                val row=rows.optJSONObject(i)?:return@mapNotNull null
++                val title=decoded(row.optString("title")).ifBlank{"برنامج"}
++                val description=decoded(row.optString("description"))
++                EpgProgram(title,description,row.optString("start_timestamp").toLongOrNull(),row.optString("stop_timestamp").toLongOrNull())
++            }
++        } }
++        operation
++    }
+     fun streamUrl(entry: MediaEntry): String = safe {
+         check(isVisible(entry))
+         val l = login() ?: error("Connect a provider first.")
+@@ -326,7 +354,12 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
+                 if (membership in ids && allowed(category.kind, ids, ticket)) rows += MediaEntry(
+                     row.get(if (category.kind == "series") "series_id" else "stream_id").toString(), row.optString("name", "Untitled"),
+                     membership, category.kind, row.optString(if (category.kind == "series") "cover" else "stream_icon"),
+-                    extension(row.optString("container_extension", "mp4")), plot = row.optString("plot"), categoryIds = ids)
++                    extension(row.optString("container_extension", "mp4")), plot = row.optString("plot"), categoryIds = ids,
++                    releaseYear = (row.optString("year").ifBlank{row.optString("releaseDate")}).take(4).toIntOrNull(),
++                    addedTimestamp = row.optString("added").toLongOrNull(),
++                    viewCount = row.optString("views").toLongOrNull(),
++                    rating = row.optString("rating").toDoubleOrNull(),
++                    durationSeconds = parseDurationSeconds(row.optString("duration_secs").ifBlank{row.optString("duration")}))
+             }
+         }
+         return rows
+@@ -378,7 +411,12 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
+             val previous=merged[key]
+             val ids=entry.categoryIds+memberships[memberKey(entry)].orEmpty()+previous?.categoryIds.orEmpty()
+             memberships[memberKey(entry)]=ids
+-            merged[key]=(previous?:entry).copy(categoryIds=ids)
++            merged[key]=(previous?:entry).copy(categoryIds=ids,
++                releaseYear=entry.releaseYear?:previous?.releaseYear,
++                addedTimestamp=entry.addedTimestamp?:previous?.addedTimestamp,
++                viewCount=entry.viewCount?:previous?.viewCount,
++                rating=entry.rating?:previous?.rating,
++                durationSeconds=entry.durationSeconds?:previous?.durationSeconds)
+         }
+         val saved=JSONObject();memberships.forEach{(k,v)->saved.put(k,JSONArray(v.toList()))}
+         vault.write("category-memberships",JSONObject().put("scope",JSONArray(policy?.scope.orEmpty())).put("rows",saved).toString())
+@@ -422,7 +460,7 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
+         reader.beginArray()
+         while (reader.hasNext()) {
+             var id = ""; var name = ""; var category = ""; var kind = ""
+-            var icon = ""; var extension = "mp4"; var direct = ""; var season = 0; var plot = ""; var memberships: Set<String>? = null
++            var icon = ""; var extension = "mp4"; var direct = ""; var season = 0; var plot = ""; var year:Int?=null;var added:Long?=null;var views:Long?=null;var rating:Double?=null;var duration:Long?=null;var memberships: Set<String>? = null
+             reader.beginObject()
+             while (reader.hasNext()) {
+                 when (reader.nextName()) {
+@@ -435,18 +473,23 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
+                     "directUrl" -> direct = reader.nextString()
+                     "season" -> season = reader.nextInt()
+                     "plot" -> plot = reader.nextString()
++                    "releaseYear" -> year = if(reader.peek()==JsonToken.NULL){reader.nextNull();null}else reader.nextInt()
++                    "addedTimestamp" -> added = if(reader.peek()==JsonToken.NULL){reader.nextNull();null}else reader.nextLong()
++                    "viewCount" -> views = if(reader.peek()==JsonToken.NULL){reader.nextNull();null}else reader.nextLong()
++                    "rating" -> rating = if(reader.peek()==JsonToken.NULL){reader.nextNull();null}else reader.nextDouble()
++                    "durationSeconds" -> duration = if(reader.peek()==JsonToken.NULL){reader.nextNull();null}else reader.nextLong()
+                     "categoryIds" -> { val ids = mutableSetOf<String>(); reader.beginArray(); while(reader.hasNext())ids.add(reader.nextString()); reader.endArray(); memberships=ids }
+                     else -> reader.skipValue()
+                 }
+             }
+             reader.endObject()
+-            consume(MediaEntry(id, name, category, kind, icon, extension, direct, season, plot, memberships ?: setOf(category)))
++            consume(MediaEntry(id, name, category, kind, icon, extension, direct, season, plot, memberships ?: setOf(category),year,added,views,rating,duration))
+         }
+         reader.endArray()
+         check(reader.peek() == JsonToken.END_DOCUMENT)
+     }
+     internal fun readRows(reader: JsonReader, consume: (JSONObject) -> Unit) {
+-        val wanted = setOf("category_id", "category_name", "series_id", "stream_id", "name", "cover", "stream_icon", "container_extension", "plot")
++        val wanted = setOf("category_id", "category_name", "series_id", "stream_id", "name", "cover", "stream_icon", "container_extension", "plot", "year", "releaseDate", "added", "views", "rating", "duration", "duration_secs")
+         reader.beginArray()
+         var count = 0
+         while (reader.hasNext()) {
+@@ -455,6 +498,23 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
+             reader.beginObject()
+             while (reader.hasNext()) {
+                 val key = reader.nextName()
++                if (key == "info") {
++                    if(reader.peek()==JsonToken.BEGIN_OBJECT){
++                        val info=JSONObject();reader.beginObject()
++                        while(reader.hasNext()){
++                            val k=reader.nextName()
++                            if(k in setOf("plot","rating","duration","duration_secs","year","releaseDate")){
++                                when(reader.peek()){
++                                    JsonToken.STRING,JsonToken.NUMBER->info.put(k,reader.nextString())
++                                    else->reader.skipValue()
++                                }
++                            } else reader.skipValue()
++                        }
++                        reader.endObject()
++                        for(k in info.keys())if(!row.has(k))row.put(k,info.get(k))
++                    } else reader.skipValue()
++                    continue
++                }
+                 if (key == "category_ids") {
+                     if (reader.peek() == JsonToken.BEGIN_ARRAY) {
+                         val ids = JSONArray(); reader.beginArray()
+@@ -480,6 +540,15 @@ class ProviderRepository internal constructor(private val vault: CredentialVault
+         reader.endArray()
+         check(reader.peek() == JsonToken.END_DOCUMENT)
+     }
++    private fun parseDurationSeconds(raw:String):Long? {
++        val value=raw.trim()
++        value.toLongOrNull()?.let{return it.takeIf{n->n>0}}
++        val parts=value.split(":").map{it.toLongOrNull()?:return null}
++        if(parts.size !in 2..3)return null
++        val seconds=if(parts.size==3)parts[0]*3600+parts[1]*60+parts[2] else parts[0]*60+parts[1]
++        return seconds.takeIf{it>0}
++    }
++
+     private fun api(l: ProviderLogin, action: String = "", extra: Pair<String, String>? = null): String =
+         base(l) + "/player_api.php?username=" + encode(l.username) + "&password=" + encode(l.password) +
+             (if (action.isEmpty()) "" else "&action=" + encode(action)) + (extra?.let { "&" + it.first + "=" + encode(it.second) } ?: "")
+diff --git a/app/src/main/java/com/alaa/universe/ProviderUi.kt b/app/src/main/java/com/alaa/universe/ProviderUi.kt
+index 626f120..b2190d8 100644
+--- a/app/src/main/java/com/alaa/universe/ProviderUi.kt
++++ b/app/src/main/java/com/alaa/universe/ProviderUi.kt
+@@ -1,6 +1,7 @@
+ package com.alaa.universe
+ 
+ import android.app.AlertDialog
++import android.content.Context
+ import android.graphics.Color
+ import android.os.Handler
+ import android.os.Looper
+@@ -93,6 +94,32 @@ class ProviderUi(private val screen:UniverseScreen) {
+     private var nextCardFocus:Int?=null
+     private var categoryOnlyView=false
+     private val mediaOrder=MediaOrder(context.getSharedPreferences("media-order-v1",0))
++    private val sortPrefs=context.getSharedPreferences("media-sort-v1",0)
++    private fun sortKey(kind:String):String {
++        val scope=orderScope(false).take(2)+kind
++        val bytes=java.security.MessageDigest.getInstance("SHA-256").digest(org.json.JSONArray(scope).toString().toByteArray())
++        return "sort_"+bytes.joinToString(""){"%02x".format(it)}
++    }
++    private fun sortMode(kind:String)=sortPrefs.getString(sortKey(kind),"default")?:"default"
++    private fun sortLabel(kind:String)=when(sortMode(kind)){"year"->"السنة: الأحدث";"newest"->"الإضافات الأحدث";"popular"->"الأكثر مشاهدة";else->"ترتيب افتراضي"}
++    private fun sortMedia(values:List<MediaEntry>,kind:String):List<MediaEntry> = MediaSort.sort(values,kind,sortMode(kind))
++    private fun showSortOptions(kind:String){
++        if(kind=="live")return
++        val choices=arrayOf("ترتيب افتراضي","سنة الإصدار · الأحدث أولاً","الإضافات الأحدث أولاً","الأكثر مشاهدة")
++        PremiumDialogs.builder(context).setTitle("ترتيب ${if(kind=="movie")"الأفلام" else "المسلسلات"}").setItems(choices){_,which->
++            val value=listOf("default","year","newest","popular")[which]
++            if(value=="popular" && browseIndex?.all.orEmpty().none{it.kind==kind&&it.viewCount!=null}){
++                toast("المصدر ما بيوفر بيانات المشاهدات؛ ما في ترتيب شعبية موثوق.");return@setItems
++            }
++            if(value=="year" && browseIndex?.all.orEmpty().none{it.kind==kind&&it.releaseYear!=null}){
++                toast("المصدر ما بيوفر سنة إصدار للمحتوى؛ ما في ترتيب سنة موثوق.");return@setItems
++            }
++            if(value=="newest" && browseIndex?.all.orEmpty().none{it.kind==kind&&it.addedTimestamp!=null}){
++                toast("المصدر ما بيوفر تاريخ الإضافة؛ ما في ترتيب أحدث موثوق.");return@setItems
++            }
++            sortPrefs.edit().putString(sortKey(kind),value).apply();orderRevision++;browseLists.clear();browse(kind,categoryOnlyView)
++        }.show()
++    }
+     private data class MoveTarget(val categoryRow:Boolean,val id:String)
+     private val moveRows=mutableMapOf<View,MoveTarget>()
+     private var moving:MediaMove?=null
+@@ -240,7 +267,39 @@ class ProviderUi(private val screen:UniverseScreen) {
+         return favoriteIds
+     }
+     private var recents=loadSet("recent")
+-    val playback=PlaybackSession(context,{repository}){message->statusView?.text=message}
++    private fun playbackScope()=orderScope(false).take(2).joinToString("|")
++    private fun progressStore()=PlaybackProgressStore(context,playbackScope())
++    private fun settingKey(name:String):String {
++        val bytes=java.security.MessageDigest.getInstance("SHA-256").digest(playbackScope().toByteArray())
++        return name+"_"+bytes.joinToString(""){"%02x".format(it)}
++    }
++    private fun autoPlayNextEnabled()=context.getSharedPreferences("series-playback-settings-v1",0).getBoolean(settingKey("autoplay_next"),true)
++    private fun toggleAutoPlayNext(){
++        val prefs=context.getSharedPreferences("series-playback-settings-v1",0)
++        prefs.edit().putBoolean(settingKey("autoplay_next"),!autoPlayNextEnabled()).apply()
++        renderEpisodes()
++    }
++    private var endedPlaybackKey=""
++    private fun onPlaybackProgress(item:MediaEntry,position:Long,duration:Long,ended:Boolean){
++        if(ended){
++            progressStore().clear(item)
++            val key=identity(item)+":"+item.season
++            if(key==endedPlaybackKey)return
++            endedPlaybackKey=key
++            if(item.kind=="episode" && autoPlayNextEnabled() && selected?.kind=="series"){
++                val at=episodeList.indexOfFirst{it.id==item.id && it.season==item.season}
++                val next=episodeList.getOrNull(at+1)
++                if(at>=0 && next!=null){
++                    recents.add(identity(next));saveState()
++                    playChecked(next)
++                    if(full)fullscreen() else renderEpisodes()
++                }
++            }
++        } else progressStore().save(item,position,duration)
++    }
++    val playback=PlaybackSession(context,{repository},{message->statusView?.text=message},
++        progressChanged={item,position,duration,ended->onPlaybackProgress(item,position,duration,ended)},
++        seriesScope={selected?.takeIf{it.kind=="series"}?.id})
+     private val panelNetwork=Executors.newSingleThreadExecutor()
+     private val panelLoads=Executors.newSingleThreadExecutor()
+     private val panel by lazy { PanelIntegration(
+@@ -336,12 +395,29 @@ class ProviderUi(private val screen:UniverseScreen) {
+     private fun toast(value:String){PremiumDialogs.toast(context,value,true)}
+     fun loginDialog(){
+         if(busy){toast("Playlist is updating");return}
+-        val root=LinearLayout(context).apply{orientation=LinearLayout.VERTICAL;if(atlas)layoutDirection=View.LAYOUT_DIRECTION_LTR;setPadding(PremiumDialogs.dp(context,24),0,PremiumDialogs.dp(context,24),PremiumDialogs.dp(context,8))}
+-        val device=LinearLayout(context).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(12,8,12,8);background=PremiumDialogs.surface(context,0xff1a2433.toInt())}
++        val root=LinearLayout(context).apply{
++            orientation=LinearLayout.VERTICAL
++            if(atlas)layoutDirection=View.LAYOUT_DIRECTION_LTR
++            setPadding(PremiumDialogs.dp(context,24),PremiumDialogs.dp(context,6),PremiumDialogs.dp(context,24),PremiumDialogs.dp(context,8))
++            if(atlas)background=PremiumDialogs.surface(context,0xff111629.toInt(),0xff6c5833.toInt())
++        }
++        val device=LinearLayout(context).apply{
++            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
++            setPadding(12,8,12,8)
++            background=PremiumDialogs.surface(context,if(atlas)0xff171d34.toInt() else 0xff1a2433.toInt(),if(atlas)0xff68552f.toInt() else 0x334f6077)
++        }
+         device.addView(PremiumDialogs.text(context,panelSummary(),13f),LinearLayout.LayoutParams(0,-2,1f))
+         device.addView(PremiumDialogs.button(context,"Copy"){(context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Device code",if(testMode)"" else panel.code));toast("Device code copied")})
+         root.addView(device)
+-        val tabs=LinearLayout(context).apply{orientation=LinearLayout.HORIZONTAL;setPadding(0,12,0,12)};root.addView(tabs,LinearLayout.LayoutParams(-1,PremiumDialogs.dp(context,80)))
++        root.addView(PremiumDialogs.text(context,if(atlas)"مصدر القنوات" else "Playlist source",14f).apply{
++            if(atlas){setTextColor(0xffe9bd70.toInt());setTypeface(android.graphics.Typeface.DEFAULT_BOLD);gravity=Gravity.LEFT or Gravity.CENTER_VERTICAL}
++        })
++        val tabs=LinearLayout(context).apply{
++            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
++            setPadding(PremiumDialogs.dp(context,8),PremiumDialogs.dp(context,8),PremiumDialogs.dp(context,8),PremiumDialogs.dp(context,8))
++            background=PremiumDialogs.surface(context,if(atlas)0xff0c1020.toInt() else 0xff151e2d.toInt(),if(atlas)0xff56482d.toInt() else 0x334f6077)
++        }
++        root.addView(tabs,LinearLayout.LayoutParams(-1,PremiumDialogs.dp(context,76)).apply{bottomMargin=PremiumDialogs.dp(context,12)})
+         val xtream=LinearLayout(context).apply{orientation=LinearLayout.VERTICAL}
+         val m3uGroup=LinearLayout(context).apply{orientation=LinearLayout.VERTICAL;visibility=View.GONE}
+         fun field(parent:LinearLayout,label:String,hint:String,password:Boolean=false):EditText {
+@@ -353,7 +429,8 @@ class ProviderUi(private val screen:UniverseScreen) {
+                 if(atlas)gravity=Gravity.LEFT or Gravity.CENTER_VERTICAL
+                 val icon=context.getDrawable(if(password)android.R.drawable.ic_lock_lock else android.R.drawable.ic_menu_edit)?.mutate()?.apply{setTint(PremiumDialogs.accent(context));setBounds(0,0,PremiumDialogs.dp(context,18),PremiumDialogs.dp(context,18))}
+                 setCompoundDrawablesRelative(icon,null,null,null);compoundDrawablePadding=PremiumDialogs.dp(context,12)
+-                background=PremiumDialogs.focus(context);setPadding(16,8,16,8);minimumHeight=PremiumDialogs.dp(context,48)
++                background=if(atlas)PremiumDialogs.surface(context,0xff11182a.toInt(),0xff514a3e.toInt()) else PremiumDialogs.focus(context)
++                setPadding(16,8,16,8);minimumHeight=PremiumDialogs.dp(context,48)
+                 importantForAutofill=View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+                 parent.addView(this,LinearLayout.LayoutParams(-1,PremiumDialogs.dp(context,48)))
+             }
+@@ -369,22 +446,30 @@ class ProviderUi(private val screen:UniverseScreen) {
+         var useM3u=false
+         lateinit var xTab:Button;lateinit var mTab:Button
+         fun select(m:Boolean){useM3u=m;xtream.visibility=if(m)View.GONE else View.VISIBLE;m3uGroup.visibility=if(m)View.VISIBLE else View.GONE
+-            xTab.text=if(m)"Xtream" else "✓  Xtream";mTab.text=if(m)"✓  M3U URL" else "M3U URL"
++            xTab.text=(if(!m)"✓  " else "")+"Xtream"
++            mTab.text=(if(m)"✓  " else "")+"M3U URL"
+             xTab.isSelected=!m;mTab.isSelected=m
+-            xTab.setTextColor(if(m)Color.WHITE else 0xff090e17.toInt());mTab.setTextColor(if(m)0xff090e17.toInt() else Color.WHITE)
+-            xTab.background=PremiumDialogs.focus(context,!m);mTab.background=PremiumDialogs.focus(context,m)
++            if(atlas){
++                xTab.setTextColor(if(m)0xffe5e9f4.toInt() else 0xff111629.toInt())
++                mTab.setTextColor(if(m)0xff111629.toInt() else 0xffe5e9f4.toInt())
++                xTab.background=PremiumDialogs.surface(context,if(m)0xff1b2541.toInt() else 0xffe9bd70.toInt(),0xffe9bd70.toInt())
++                mTab.background=PremiumDialogs.surface(context,if(m)0xffe9bd70.toInt() else 0xff1b2541.toInt(),0xffe9bd70.toInt())
++            }else{
++                xTab.setTextColor(if(m)Color.WHITE else 0xff090e17.toInt());mTab.setTextColor(if(m)0xff090e17.toInt() else Color.WHITE)
++                xTab.background=PremiumDialogs.focus(context,!m);mTab.background=PremiumDialogs.focus(context,m)
++            }
+         }
+-        xTab=PremiumDialogs.button(context,"✓  Xtream",true){select(false)}
++        xTab=PremiumDialogs.button(context,"Xtream",true){select(false)}
+         mTab=PremiumDialogs.button(context,"M3U URL"){select(true)}
+         tabs.addView(xTab,LinearLayout.LayoutParams(0,PremiumDialogs.dp(context,56),1f).apply{marginEnd=8})
+         tabs.addView(mTab,LinearLayout.LayoutParams(0,PremiumDialogs.dp(context,56),1f))
+         select(saved?.m3uUrl?.isNotBlank()==true)
+         val http=CheckBox(context).apply{isChecked=saved?.allowHttp==true;text="Allow insecure HTTP (credentials may be exposed)";textSize=12f;buttonTintList=android.content.res.ColorStateList.valueOf(PremiumDialogs.accent(context));root.addView(this)}
+-        val help=PremiumDialogs.text(context,"Use HTTPS where supported. Credentials stay encrypted on this device.",12f);root.addView(help)
+-        root.addView(PremiumDialogs.button(context,"Remove saved playlist",danger=true){confirmRemove()},LinearLayout.LayoutParams(-2,PremiumDialogs.dp(context,48)))
++        val help=PremiumDialogs.text(context,if(atlas)"استخدم HTTPS إذا كان متاحاً. تُحفظ بيانات الدخول مشفّرة على هذا الجهاز." else "Use HTTPS where supported. Credentials stay encrypted on this device.",12f);root.addView(help)
++        root.addView(PremiumDialogs.button(context,if(atlas)"إزالة القائمة المحفوظة" else "Remove saved playlist",danger=true){confirmRemove()},LinearLayout.LayoutParams(-2,PremiumDialogs.dp(context,48)))
+         val scroll=ScrollView(context).apply{isFillViewport=false;addView(root)}
+-        val dialog=PremiumDialogs.builder(context).setTitle("Connect playlist").setView(scroll).setNegativeButton("Cancel",null)
+-            .setPositiveButton("Connect",null).create()
++        val dialog=PremiumDialogs.builder(context).setTitle(if(atlas)"ربط قائمة القنوات" else "Connect playlist").setView(scroll).setNegativeButton(if(atlas)"إلغاء" else "Cancel",null)
++            .setPositiveButton(if(atlas)"ربط" else "Connect",null).create()
+         var connecting=false
+         dialog.setOnShowListener{PremiumDialogs.style(dialog);dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener{
+             if(connecting)return@setOnClickListener
+@@ -422,6 +507,18 @@ class ProviderUi(private val screen:UniverseScreen) {
+         }}
+         dialog.setOnCancelListener{repository.cancelConnect();busy=false;generation++}
+         dialog.show()
++        if(atlas)dialog.window?.let{window->
++            val metrics=context.resources.displayMetrics
++            val width=minOf(PremiumDialogs.dp(context,1360),(metrics.widthPixels*.94f).toInt())
++            window.setLayout(width,WindowManager.LayoutParams.WRAP_CONTENT)
++            window.setBackgroundDrawable(PremiumDialogs.surface(context,0xff111629.toInt(),0xff80683d.toInt()))
++            dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.apply{
++                setTextColor(0xff111629.toInt());background=PremiumDialogs.surface(context,0xffe9bd70.toInt(),0xffe9bd70.toInt())
++            }
++            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.apply{
++                setTextColor(0xffe9bd70.toInt());background=PremiumDialogs.surface(context,0xff1b2541.toInt(),0xff6c5833.toInt())
++            }
++        }
+         dialog.getButton(-2)?.setOnClickListener{repository.cancelConnect();busy=false;generation++;dialog.dismiss()}
+         if(atlas)dialog.window?.decorView?.layoutDirection=View.LAYOUT_DIRECTION_LTR
+         dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+@@ -482,6 +579,29 @@ class ProviderUi(private val screen:UniverseScreen) {
+         })
+         if(image.isAttachedToWindow)load()
+     }
++    private fun detailsMetadata(e:MediaEntry):String = listOfNotNull(
++        e.releaseYear?.toString(),e.durationSeconds?.let{PlaybackProgressStore.formatTime(it*1000)},
++        e.rating?.takeIf{it>0}?.let{"★ ${"%.1f".format(java.util.Locale.ROOT,it)}"}
++    ).joinToString("  ·  ")
++    private fun showEpg(){
++        val channel=playback.entry?.takeIf{it.kind=="live"}?:selected?.takeIf{it.kind=="live"}?:run{toast("اختار قناة مباشرة أولاً");return}
++        val operation=runCatching{repository.prepareEpg(channel)}.getOrElse{toast("دليل البرامج غير متاح لهذا المصدر");return}
++        toast("عم حمّل دليل البرامج…")
++        worker.execute{
++            val result=runCatching{operation()}
++            main.post{
++                if(closed)return@post
++                result.onSuccess{programs->
++                    if(programs.isEmpty()){toast("ما في بيانات دليل برامج لهالقناة");return@onSuccess}
++                    val lines=programs.map{program->
++                        val times=listOfNotNull(program.startTimestamp?.let{java.text.SimpleDateFormat("HH:mm",java.util.Locale.getDefault()).format(java.util.Date(it*1000))},program.endTimestamp?.let{java.text.SimpleDateFormat("HH:mm",java.util.Locale.getDefault()).format(java.util.Date(it*1000))}).joinToString("–")
++                        listOf(times,program.title,program.description).filter{it.isNotBlank()}.joinToString("\n")
++                    }
++                    PremiumDialogs.builder(context).setTitle("دليل البرامج · ${channel.name}").setItems(lines.toTypedArray()){_,_->}.show()
++                }.onFailure{toast("ما قدرنا نحمّل دليل البرامج من المصدر")}
++            }
++        }
++    }
+     private fun button(s:String,x:Int,y:Int,w:Int,h:Int,action:()->Unit):TextView=
+         if(atlas) Atlas.row(stage!!,s,x,y,w,h,action=action).apply{gravity=Gravity.LEFT or Gravity.CENTER_VERTICAL} else text(s,x,y,w,h).apply{
+             id=View.generateViewId();isFocusable=true;isFocusableInTouchMode=true;isClickable=true
+@@ -546,8 +666,11 @@ class ProviderUi(private val screen:UniverseScreen) {
+         val work={
+             val values=index.select(key.kind,key.category,fav,recent)
+             val available=values.map{it.id}
+-            val ids=key.draft?.let{MediaOrder.merge(it,available)}?:mediaOrder.ids(scope,available)
+-            BrowseIndex.ordered(values,ids)
++            if(key.kind!="live" && sortMode(key.kind)!="default")sortMedia(values,key.kind)
++            else {
++                val ids=key.draft?.let{MediaOrder.merge(it,available)}?:mediaOrder.ids(scope,available)
++                BrowseIndex.ordered(values,ids)
++            }
+         }
+         val install:(List<MediaEntry>)->Unit={list->
+             if(serial==indexSerial){
+@@ -667,9 +790,7 @@ class ProviderUi(private val screen:UniverseScreen) {
+             val title=selected?.takeIf{it.kind=="live"}?.name?:"Select a channel"
+             text(title,if(harak)1288 else 990,if(harak)515 else 680,if(harak)588 else 882,90,35f)
+             val open=button("Fullscreen",if(harak)1288 else 990,if(harak)620 else 800,if(harak)260 else 360,72){if(playback.entry!=null)fullscreen()}
+-            val tracks=button("Audio / Subtitles",if(harak)1566 else 1375,if(harak)620 else 800,if(harak)310 else 480,72){playback.trackMenu()}
+             val fav=button("Favorite",if(harak)1288 else 990,if(harak)718 else 890,if(harak)588 else 360,64){selected?.let{if(!favorites.add(identity(it)))favorites.remove(identity(it));saveState();toast("Favorites updated")}}
+-            tracks.nextFocusLeftId=open.id;open.nextFocusRightId=tracks.id
+             cards.forEach{it.nextFocusRightId=open.id};open.nextFocusLeftId=cards.firstOrNull()?.id?:open.id
+             statusView=text(if(playback.player==null)"Select a channel to start playback" else "",if(harak)1288 else 990,if(harak)820 else 968,if(harak)588 else 870,50,24f)
+             playback.zap={delta->zap(delta)}
+@@ -678,6 +799,60 @@ class ProviderUi(private val screen:UniverseScreen) {
+         text(if(moving!=null)"↑ ↓ Move   OK Save   BACK Cancel" else "${if(currentList.isEmpty())0 else offset+1}–${offset+items.size} / ${currentList.size}   Hold OK for options   BACK Home",if(harak)738 else 490,1015,if(harak)1138 else 1380,45,24f)
+         focus(if(nextCatFocus!=null)catRows.getOrNull(nextCatFocus!!) else cards.getOrNull((nextCardFocus?:0).coerceAtMost(cards.lastIndex.coerceAtLeast(0)))?:catRows.firstOrNull());nextCatFocus=null;if(cards.isNotEmpty())nextCardFocus=null
+     }
++    private fun showQuickSearch(){
++        if(!ensureBrowseIndex()){toast("المكتبة لسا عم تتحمّل");return}
++        val all=browseIndex?.all.orEmpty()
++        val edit=EditText(context).apply{
++            hint="ابحث عن قناة أو فيلم أو مسلسل"
++            inputType=InputType.TYPE_CLASS_TEXT
++            setSingleLine(true)
++            setPadding(PremiumDialogs.dp(context,18),PremiumDialogs.dp(context,12),PremiumDialogs.dp(context,18),PremiumDialogs.dp(context,12))
++        }
++        val list=ListView(context).apply{isFocusable=true;isFocusableInTouchMode=true;dividerHeight=1}
++        val box=LinearLayout(context).apply{orientation=LinearLayout.VERTICAL;setPadding(PremiumDialogs.dp(context,18),0,PremiumDialogs.dp(context,18),PremiumDialogs.dp(context,8));addView(edit,LinearLayout.LayoutParams(-1,PremiumDialogs.dp(context,60)));addView(list,LinearLayout.LayoutParams(-1,PremiumDialogs.dp(context,440)))}
++        val dialog=AlertDialog.Builder(context).setTitle("بحث سريع").setView(box).setNegativeButton("إغلاق",null).create()
++        var matches=emptyList<MediaEntry>()
++        fun showResults(values:List<MediaEntry>){
++            matches=values
++            val labels=values.map{e->"${when(e.kind){"live"->"قناة";"movie"->"فيلم";else->"مسلسل"}}  ·  ${e.name}"}
++            list.adapter=ArrayAdapter(context,android.R.layout.simple_list_item_1,labels)
++        }
++        var queryToken=0
++        var pending:Runnable?=null
++        edit.addTextChangedListener(object:android.text.TextWatcher{
++            override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){}
++            override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int){
++                val token=++queryToken;pending?.let{main.removeCallbacks(it)}
++                val q=s?.toString().orEmpty()
++                pending=Runnable{
++                    val run={MediaQuickSearch.search(all,q)}
++                    if(testMode)showResults(run()) else worker.execute{val result=run();main.post{if(dialog.isShowing&&token==queryToken)showResults(result)}}
++                }
++                main.postDelayed(pending!!,120)
++            }
++            override fun afterTextChanged(s:android.text.Editable?){}
++        })
++        list.setOnItemClickListener{_,_,position,_->
++            val entry=matches.getOrNull(position)?:return@setOnItemClickListener
++            dialog.dismiss()
++            selected=entry;recents.add(identity(entry));saveState()
++            when(entry.kind){
++                "live"->{mode="live";category="";offset=0;playChecked(entry);browse("live")}
++                "series"->{mode="series";category="";season=0;seasonOffset=0;episodeOffset=0;episodeList=emptyList();screen.seriesDetail()}
++                else->{mode="movie";category="";screen.movieDetail()}
++            }
++        }
++        dialog.setOnShowListener{
++            val width=minOf(PremiumDialogs.dp(context,1250),(context.resources.displayMetrics.widthPixels*.90f).toInt())
++            dialog.window?.setLayout(width,PremiumDialogs.dp(context,610))
++            edit.requestFocus()
++            edit.post{(context.getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager)?.showSoftInput(edit,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)}
++        }
++        dialog.show()
++        // setOnShowListener fires during show; repeat sizing after the decor has a window.
++        dialog.window?.setLayout(minOf(PremiumDialogs.dp(context,1250),(context.resources.displayMetrics.widthPixels*.90f).toInt()),PremiumDialogs.dp(context,610))
++    }
++
+     // Only the visible pages get native Views and poster requests. Catalogue indexing and
+     // custom ordering are already computed on the provider worker and cached by category.
+     private fun browseAtlas(kind:String){
+@@ -702,6 +877,13 @@ class ProviderUi(private val screen:UniverseScreen) {
+         Atlas.section(s,"الفئات",xCat,169,Atlas.CATEGORY_W)
+         Atlas.section(s,if(live)"دليل القنوات" else "رف المشاهدة",if(live)xLive else 54,169,if(live)Atlas.LIVE_W else 1402)
+         if(!live)Atlas.chip(s,if(kind=="movie")"CINEMA" else "SERIES",54,168,127,38)
++        val sortAction=if(live)null else Atlas.row(s,sortLabel(kind),1240,169,310,42,23f){showSortOptions(kind)}.apply{tag="atlas-media-sort"}
++        val searchAction=Atlas.row(s,"بحث سريع",1570,169,296,42,23f){showQuickSearch()}.apply{
++            tag="atlas-quick-search";nextFocusLeftId=sortAction?.id?:back.id;nextFocusDownId=back.id
++        }
++        if(sortAction!=null){back.nextFocusRightId=sortAction.id;sortAction.nextFocusLeftId=back.id;sortAction.nextFocusRightId=searchAction.id}
++        else back.nextFocusRightId=searchAction.id
++        searchAction.nextFocusRightId=searchAction.id
+         val categoryRows=BrowseIndex.page(cats,catOffset,Atlas.CAT_PAGE).mapIndexed{i,c->
+             val title=when(c.id){""->"الكل";"favorites"->"المفضلة";"recent"->"المشاهدة الأخيرة";else->c.name}
+             val y=top+84*i
+@@ -785,6 +967,9 @@ class ProviderUi(private val screen:UniverseScreen) {
+             v.nextFocusDownId=cards.getOrNull(i+step)?.id?:v.id
+         }
+         back.nextFocusDownId=(categoryRows.firstOrNull()?:cards.firstOrNull())?.id?:back.id
++        searchAction.nextFocusDownId=cards.firstOrNull()?.id?:categoryRows.firstOrNull()?.id?:back.id
++        sortAction?.nextFocusDownId=cards.firstOrNull()?.id?:categoryRows.firstOrNull()?.id?:back.id
++        categoryRows.firstOrNull()?.nextFocusUpId=searchAction.id
+         if(items.isEmpty())Atlas.label(s,if(!indexReady()||listKey() in pendingLists)"جارٍ تحميل المكتبة…" else "لا يوجد محتوى في هذه الفئة",if(live)xLive else 54,408,if(live)Atlas.LIVE_W else 1397,65,32f,Atlas.muted)
+         if(live){
+             Atlas.section(s,"معاينة القناة",54,169,847)
+@@ -799,11 +984,11 @@ class ProviderUi(private val screen:UniverseScreen) {
+             }
+             Atlas.chip(s,if(playback.entry==null)"بانتظار الاختيار" else "قيد التشغيل",686,711,183,41)
+             Atlas.label(s,playback.entry?.name ?: "لا توجد قناة قيد التشغيل",78,758,795,55,37f,Atlas.fg,true)
+-            val actions=listOf(
+-                Atlas.row(s,"المفضلة",76,834,245,70,26f){selected?.takeIf{it.kind=="live"}?.let{if(!favorites.add(identity(it)))favorites.remove(identity(it));saveState();toast("تم تحديث المفضلة")}},
+-                Atlas.row(s,"الصوت والترجمة",340,834,260,70,26f){playback.trackMenu()},
+-                Atlas.row(s,"ملء الشاشة",619,834,259,70,26f){if(playback.entry!=null)fullscreen()}
++            val actions=mutableListOf(
++                Atlas.row(s,"المفضلة",76,834,245,70,26f){selected?.takeIf{it.kind=="live"}?.let{if(!favorites.add(identity(it)))favorites.remove(identity(it));saveState();toast("تم تحديث المفضلة")}}
+             )
++            if(repository.login()?.m3uUrl.isNullOrBlank())actions.add(Atlas.row(s,"دليل البرامج",340,834,259,70,26f){showEpg()})
++            actions.add(Atlas.row(s,"ملء الشاشة",619,834,259,70,26f){if(playback.entry!=null)fullscreen()})
+             actions.forEachIndexed{i,v->v.nextFocusLeftId=actions.getOrNull(i-1)?.id?:v.id;v.nextFocusRightId=actions.getOrNull(i+1)?.id?:cards.firstOrNull()?.id?:categoryRows.firstOrNull()?.id?:v.id;v.nextFocusUpId=back.id;v.nextFocusDownId=v.id}
+             cards.forEach{it.nextFocusLeftId=actions.last().id}
+             statusView=Atlas.label(s,"",78,918,795,46,23f,Atlas.muted)
+@@ -853,10 +1038,15 @@ class ProviderUi(private val screen:UniverseScreen) {
+             if(harak)Harak.label(stage!!,e.name,650,182,1170,90,48f,true)
+             if(atlas)Atlas.label(stage!!,e.name,75,176,1130,82,52f,Atlas.fg,true,false)
+             text(e.plot.ifBlank{if(atlas)"فيلم من قائمة المشاهدة المتصلة" else "Movie from your connected playlist"},if(atlas)75 else if(harak)650 else 720,if(harak)310 else if(atlas)286 else 220,1100,if(harak)280 else 400,if(harak)26f else 33f).apply{maxLines=8;gravity=Gravity.TOP or Gravity.LEFT}
+-            val play=button(if(harak||atlas)"شاهد الآن" else "Play Movie",if(atlas)75 else if(harak)650 else 720,if(harak)670 else 800,480,90){playChecked(e);fullscreen()}
++            val metadata=detailsMetadata(e)
++            if(metadata.isNotBlank())text(metadata,if(atlas)75 else if(harak)650 else 720,if(atlas)704 else 630,1100,44,25f)
++            val point=progressStore().read()?.takeIf{it.kind=="movie" && it.id==e.id}
++            val playLabel=if(point!=null && atlas)"متابعة المشاهدة · ${PlaybackProgressStore.formatTime(point.positionMs)}" else if(harak||atlas)"شاهد الآن" else "Play Movie"
++            val play=button(playLabel,if(atlas)75 else if(harak)650 else 720,if(harak)670 else 800,if(point!=null&&atlas)470 else 480,90){playChecked(e,point?.positionMs?:0L);fullscreen()}
+             if(harak)play.background=Harak.gold()
+-            val fav=button(if(harak||atlas){if(identity(e) in favorites)"إزالة من المفضلة" else "إضافة إلى المفضلة"}else if(identity(e) in favorites)"Remove Favorite" else "Add Favorite",if(atlas)585 else if(harak)1160 else 1230,if(harak)670 else 800,570,90){if(!favorites.add(identity(e)))favorites.remove(identity(e));saveState();detail(false)}
+-            play.nextFocusRightId=fav.id;fav.nextFocusLeftId=play.id;focus(play)
++            val start=if(point!=null&&atlas)button("ابدأ من البداية",560,800,335,90){playChecked(e,0L);fullscreen()} else null
++            val fav=button(if(harak||atlas){if(identity(e) in favorites)"إزالة من المفضلة" else "إضافة إلى المفضلة"}else if(identity(e) in favorites)"Remove Favorite" else "Add Favorite",if(atlas&&point!=null)920 else if(atlas)585 else if(harak)1160 else 1230,if(harak)670 else 800,if(atlas&&point!=null)450 else 570,90){if(!favorites.add(identity(e)))favorites.remove(identity(e));saveState();detail(false)}
++            play.nextFocusRightId=start?.id?:fav.id;start?.nextFocusLeftId=play.id;start?.nextFocusRightId=fav.id;fav.nextFocusLeftId=start?.id?:play.id;focus(play)
+         } else {
+             text(if(atlas)"جارٍ تحميل المواسم والحلقات…" else "Loading seasons and episodes…",if(atlas)75 else 720,220,1100,100,36f)
+             val id=e.id
+@@ -883,6 +1073,24 @@ class ProviderUi(private val screen:UniverseScreen) {
+             Harak.label(stage!!,entry?.plot?.ifBlank{"اختر الموسم والحلقة لبدء المشاهدة"}.orEmpty(),624,270,1200,85,24f,false,Harak.MUTED).maxLines=2
+             entry?.let{artwork(it,348,182,246,368)}
+         }
++        val seriesEntry=selected
++        if(atlas && seriesEntry!=null){
++            val summary=seriesEntry.plot.ifBlank{"مسلسل من قائمة المشاهدة المتصلة"}
++            Atlas.label(stage!!,summary,130,169,1040,39,23f,Atlas.muted,right=false)
++            val metadata=detailsMetadata(seriesEntry)
++            if(metadata.isNotBlank())Atlas.label(stage!!,metadata,130,208,1040,34,21f,Atlas.mint,right=false)
++        }
++        val resumePoint=progressStore().read()?.takeIf{point->point.kind=="episode" && episodeList.any{it.id==point.id && it.season==point.season}}
++        var topAction:View?=null
++        if(atlas){
++            val auto=Atlas.row(stage!!,"التشغيل التلقائي للحلقة التالية: ${if(autoPlayNextEnabled())"مفعّل" else "متوقف"}",1190,105,390,48,22f,autoPlayNextEnabled()){toggleAutoPlayNext()}.apply{tag="atlas-autoplay-next"}
++            val resume=resumePoint?.let{point->
++                val episode=episodeList.first{it.id==point.id&&it.season==point.season}
++                Atlas.row(stage!!,"استكمال · ${PlaybackProgressStore.formatTime(point.positionMs)}",1590,105,276,48,22f,action={recents.add(identity(episode));saveState();playChecked(episode,point.positionMs);fullscreen()}).apply{tag="atlas-resume-episode"}
++            }
++            auto.nextFocusRightId=resume?.id?:auto.id;resume?.nextFocusLeftId=auto.id
++            topAction=auto
++        }
+         val seasons=episodeList.map{it.season}.distinct().sorted()
+         if(season !in seasons)season=seasons.firstOrNull()?:0
+         if(seasons.isEmpty()){text(if(atlas)"لا توجد حلقات في هذا المصدر" else "No episodes returned by this provider",100,320,1700,100,38f);return}
+@@ -890,7 +1098,7 @@ class ProviderUi(private val screen:UniverseScreen) {
+         val episodePage=if(harak)6 else 10
+         seasonOffset=seasonOffset.coerceIn(0,maxOf(0,seasons.size-seasonPage))
+         val rows=seasons.drop(seasonOffset).take(seasonPage).mapIndexed{i,n->
+-            button(if(harak||atlas)"الموسم $n" else "Season $n",if(harak)348+i*304 else 80,if(harak)568 else 180+i*76,if(harak)286 else 470,70){season=n;episodeOffset=0;if(atlas)nextEpisodeFocus=0;renderEpisodes()}.also{v->
++            button(if(harak||atlas)"الموسم $n" else "Season $n",if(harak)348+i*304 else 80,if(harak)568 else if(atlas)252+i*76 else 180+i*76,if(harak)286 else 470,70){season=n;episodeOffset=0;if(atlas)nextEpisodeFocus=0;renderEpisodes()}.also{v->
+                 v.setOnKeyListener{_,key,event->if(event.action!=0)false
+                 else if(key==(if(harak)22 else 20)&&i==seasonPage-1&&seasonOffset+seasonPage<seasons.size){seasonOffset++;nextSeasonFocus=seasonPage-1;renderEpisodes();true}
+                 else if(key==(if(harak)21 else 19)&&i==0&&seasonOffset>0){seasonOffset--;nextSeasonFocus=0;renderEpisodes();true}else false}
+@@ -899,7 +1107,7 @@ class ProviderUi(private val screen:UniverseScreen) {
+         val all=episodeList.filter{it.season==season}
+         episodeOffset=episodeOffset.coerceIn(0,maxOf(0,all.size-1))
+         val eps=all.drop(episodeOffset).take(episodePage).mapIndexed{i,e->
+-            button(e.name,if(harak)348+(i%2)*778 else 620,if(harak)656+(i/2)*112 else 180+i*76,if(harak)750 else 1210,if(harak)100 else 70){recents.add(identity(e));saveState();playChecked(e);fullscreen()}.also{v->
++            button(e.name,if(harak)348+(i%2)*778 else 620,if(harak)656+(i/2)*112 else if(atlas)252+i*76 else 180+i*76,if(harak)750 else 1210,if(harak)100 else 70){recents.add(identity(e));saveState();playChecked(e);fullscreen()}.also{v->
+                 v.setOnKeyListener{_,key,event->if(event.action!=0)false
+                 else if(key==20&&i>=episodePage-(if(harak)2 else 1)&&episodeOffset+episodePage<all.size){episodeOffset+=episodePage;nextEpisodeFocus=0;renderEpisodes();true}
+                 else if(key==19&&i<(if(harak)2 else 1)&&episodeOffset>0){episodeOffset=maxOf(0,episodeOffset-episodePage);nextEpisodeFocus=episodePage-1;renderEpisodes();true}else false}
+@@ -927,6 +1135,7 @@ class ProviderUi(private val screen:UniverseScreen) {
+             rows.forEach{it.nextFocusRightId=eps.firstOrNull()?.id?:it.id}
+             eps.forEach{it.nextFocusLeftId=rows.firstOrNull()?.id?:it.id}
+         }
++        if(atlas){topAction?.let{action->action.nextFocusDownId=rows.firstOrNull()?.id?:eps.firstOrNull()?.id?:action.id;rows.firstOrNull()?.nextFocusUpId=action.id}}
+         text(if(atlas)"${all.size} حلقة   ·   ↑ ↓ المزيد من الحلقات" else "${all.size} episodes   ·   ↑ ↓ More episodes",620,985,1200,60,25f)
+         focus(if(nextSeasonFocus!=null)rows.getOrNull(nextSeasonFocus!!) else if(atlas&&nextEpisodeFocus==null)rows.firstOrNull()?:eps.firstOrNull() else eps.getOrNull((nextEpisodeFocus?:0).coerceAtMost(eps.lastIndex.coerceAtLeast(0)))?:rows.firstOrNull());nextSeasonFocus=null;nextEpisodeFocus=null
+     }
+@@ -1115,9 +1324,10 @@ class ProviderUi(private val screen:UniverseScreen) {
+         if(full){full=false;if(mode=="live")browse(mode) else {playback.stop();if(mode=="series")renderEpisodes() else detail(false)};return true}
+         return false
+     }
+-    private fun playChecked(entry:MediaEntry) {
++    private fun playChecked(entry:MediaEntry,resumePositionMs:Long=0L) {
+         if(panelSelected && !panel.tick())return
+-        playback.play(entry)
++        endedPlaybackKey=""
++        playback.play(entry,resumePositionMs)
+     }
+     fun stop(){moving=null;clearMoveInput();foreground=false;main.removeCallbacks(panelTick);main.removeCallbacks(panelPoll);detailGeneration++;playback.stop();if(full){full=false;screen.home()}}
+     fun close(){moving=null;clearMoveInput();closed=true;if(!testMode)panel.close();panelNetwork.shutdownNow();panelLoads.shutdownNow();main.removeCallbacks(panelTick);main.removeCallbacks(panelPoll);generation++;playback.stop();pictures.forEach{com.bumptech.glide.Glide.with(context).clear(it)};pictures.clear();worker.shutdownNow()}
+diff --git a/app/src/main/res/drawable/ic_launcher.xml b/app/src/main/res/drawable/ic_launcher.xml
+new file mode 100644
+index 0000000..f5f6181
+--- /dev/null
++++ b/app/src/main/res/drawable/ic_launcher.xml
+@@ -0,0 +1,10 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="48dp" android:height="48dp" android:viewportWidth="108" android:viewportHeight="108">
++    <path android:fillColor="#E2EAF3" android:pathData="M0,0h108v108h-108z" />
++    <path android:fillColor="#24F2B9FF" android:pathData="M18,54a36,36 0,1 0,72 0a36,36 0,1 0,-72 0" />
++    <path android:fillColor="#EAF4F8" android:strokeColor="#F8FFFFFF" android:strokeWidth="1.2" android:pathData="M21,54a33,33 0,1 0,66 0a33,33 0,1 0,-66 0" />
++    <path android:fillColor="#60DCC8F4" android:pathData="M26,40 C37,20 64,17 78,34 C67,31 55,33 47,42 C39,50 32,60 25,69 C21,60 22,49 26,40 Z" />
++    <path android:fillColor="#6049DDEA" android:pathData="M43,82 C54,72 67,65 84,63 C80,80 68,88 54,87 C49,86 46,84 43,82 Z" />
++    <path android:fillColor="#44FFD8A0" android:pathData="M76,37 C85,43 89,54 86,65 C81,60 75,55 68,52 C70,46 73,41 76,37 Z" />
++    <path android:fillColor="#00000000" android:strokeColor="#A8FFFFFF" android:strokeWidth="1.3" android:pathData="M21,54a33,33 0,1 0,66 0a33,33 0,1 0,-66 0" />
++</vector>
+diff --git a/app/src/main/res/drawable/ic_launcher_foreground.xml b/app/src/main/res/drawable/ic_launcher_foreground.xml
+new file mode 100644
+index 0000000..148aeee
+--- /dev/null
++++ b/app/src/main/res/drawable/ic_launcher_foreground.xml
+@@ -0,0 +1,15 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
++    <path android:name="orbit" android:fillColor="#00000000" android:strokeColor="#60FFFFFF" android:strokeWidth="1.2"
++        android:pathData="M15,57 C25,26 76,17 94,45 C103,61 87,84 61,91 C38,98 16,83 13,66" />
++    <path android:name="ambient_aura" android:fillColor="#24F2B9FF" android:pathData="M18,54a36,36 0,1 0,72 0a36,36 0,1 0,-72 0" />
++    <path android:name="glass_orb" android:fillColor="#EAF4F8" android:strokeColor="#F8FFFFFF" android:strokeWidth="1.2"
++        android:pathData="M21,54a33,33 0,1 0,66 0a33,33 0,1 0,-66 0" />
++    <path android:name="glass_lilac" android:fillColor="#60DCC8F4" android:pathData="M26,40 C37,20 64,17 78,34 C67,31 55,33 47,42 C39,50 32,60 25,69 C21,60 22,49 26,40 Z" />
++    <path android:name="glass_cyan" android:fillColor="#6049DDEA" android:pathData="M43,82 C54,72 67,65 84,63 C80,80 68,88 54,87 C49,86 46,84 43,82 Z" />
++    <path android:name="glass_amber" android:fillColor="#44FFD8A0" android:pathData="M76,37 C85,43 89,54 86,65 C81,60 75,55 68,52 C70,46 73,41 76,37 Z" />
++    <path android:name="glass_highlight" android:fillColor="#55FFFFFF" android:pathData="M33,34 C40,28 49,25 59,26 C48,28 40,33 35,42 C32,47 29,53 27,58 C26,48 28,40 33,34 Z" />
++    <path android:name="orb_edge" android:fillColor="#00000000" android:strokeColor="#A8FFFFFF" android:strokeWidth="1.3"
++        android:pathData="M21,54a33,33 0,1 0,66 0a33,33 0,1 0,-66 0" />
++    <path android:name="orbit_spark" android:fillColor="#FFFFE5BF" android:pathData="M87,26h2v6h-2zM85,28h6v2h-6z" />
++</vector>
+diff --git a/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml b/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+new file mode 100644
+index 0000000..38f4cf3
+--- /dev/null
++++ b/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+@@ -0,0 +1,4 @@
++<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
++    <background android:drawable="@color/launcher_icon_background" />
++    <foreground android:drawable="@drawable/ic_launcher_foreground" />
++</adaptive-icon>
+diff --git a/app/src/main/res/mipmap/ic_launcher.xml b/app/src/main/res/mipmap/ic_launcher.xml
+new file mode 100644
+index 0000000..f5f6181
+--- /dev/null
++++ b/app/src/main/res/mipmap/ic_launcher.xml
+@@ -0,0 +1,10 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="48dp" android:height="48dp" android:viewportWidth="108" android:viewportHeight="108">
++    <path android:fillColor="#E2EAF3" android:pathData="M0,0h108v108h-108z" />
++    <path android:fillColor="#24F2B9FF" android:pathData="M18,54a36,36 0,1 0,72 0a36,36 0,1 0,-72 0" />
++    <path android:fillColor="#EAF4F8" android:strokeColor="#F8FFFFFF" android:strokeWidth="1.2" android:pathData="M21,54a33,33 0,1 0,66 0a33,33 0,1 0,-66 0" />
++    <path android:fillColor="#60DCC8F4" android:pathData="M26,40 C37,20 64,17 78,34 C67,31 55,33 47,42 C39,50 32,60 25,69 C21,60 22,49 26,40 Z" />
++    <path android:fillColor="#6049DDEA" android:pathData="M43,82 C54,72 67,65 84,63 C80,80 68,88 54,87 C49,86 46,84 43,82 Z" />
++    <path android:fillColor="#44FFD8A0" android:pathData="M76,37 C85,43 89,54 86,65 C81,60 75,55 68,52 C70,46 73,41 76,37 Z" />
++    <path android:fillColor="#00000000" android:strokeColor="#A8FFFFFF" android:strokeWidth="1.3" android:pathData="M21,54a33,33 0,1 0,66 0a33,33 0,1 0,-66 0" />
++</vector>
+diff --git a/app/src/main/res/values/colors.xml b/app/src/main/res/values/colors.xml
+new file mode 100644
+index 0000000..0edd97b
+--- /dev/null
++++ b/app/src/main/res/values/colors.xml
+@@ -0,0 +1,3 @@
++<resources>
++    <color name="launcher_icon_background">#E2EAF3</color>
++</resources>
+diff --git a/app/src/test/java/com/alaa/universe/AtlasThemeTest.kt b/app/src/test/java/com/alaa/universe/AtlasThemeTest.kt
+index 641a87f..47b83ee 100644
+--- a/app/src/test/java/com/alaa/universe/AtlasThemeTest.kt
++++ b/app/src/test/java/com/alaa/universe/AtlasThemeTest.kt
+@@ -9,6 +9,7 @@ import android.view.MotionEvent
+ import android.view.View
+ import android.view.ViewGroup
+ import android.widget.ImageView
++import android.widget.EditText
+ import android.widget.TextView
+ import androidx.media3.ui.PlayerView
+ import org.junit.Assert.*
+@@ -54,6 +55,30 @@ class AtlasThemeTest {
+     }
+     private fun rows(s:UniverseScreen,prefix:String)=views(s).filter{it.tag?.toString()?.startsWith(prefix)==true}
+     private fun key(a:HomeActivity,k:Int){a.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN,k));a.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP,k))}
++    @Test fun atlasConnectionDialogUsesNavyGoldAndClearProviderTabs() {
++        val c=Robolectric.buildActivity(HomeActivity::class.java).create();val a=c.get();val s=a.screen
++        s.provider.testMode=true;s.theme=Atlas.ID;c.start().resume().visible();s.home();s.provider.loginDialog()
++        val d=org.robolectric.shadows.ShadowDialog.getLatestDialog() as android.app.AlertDialog
++        val decor=d.window!!.decorView
++        val all=views(decor)
++        assertTrue(all.filterIsInstance<TextView>().any{it.text.toString()=="ربط قائمة القنوات"})
++        val xtream=all.filterIsInstance<android.widget.Button>().first{it.text.toString().contains("Xtream")}
++        val m3u=all.filterIsInstance<android.widget.Button>().first{it.text.toString().contains("M3U URL")}
++        val width=minOf(PremiumDialogs.dp(a,1360),(a.resources.displayMetrics.widthPixels*.94f).toInt())
++        decor.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(a.resources.displayMetrics.heightPixels,View.MeasureSpec.AT_MOST))
++        decor.layout(0,0,width,decor.measuredHeight)
++        assertTrue(xtream.width>0&&m3u.width>0)
++        assertTrue("wide panel",width>=a.resources.displayMetrics.widthPixels*0.70f)
++        val path=File("build/atlas-captures").apply{mkdirs()}
++        views(decor).forEach{it.setScrollIndicators(0)}
++        val b=Bitmap.createBitmap(decor.width.coerceAtLeast(1),decor.height.coerceAtLeast(1),Bitmap.Config.ARGB_8888)
++        decor.draw(Canvas(b));File(path,"12-connection-dialog.png").outputStream().use{assertTrue(b.compress(Bitmap.CompressFormat.PNG,100,it))};b.recycle()
++        m3u.performClick();shadowOf(Looper.getMainLooper()).idle()
++        assertTrue(all.filterIsInstance<EditText>().any{it.hint.toString().contains("playlist.m3u")&&it.visibility==View.VISIBLE})
++        assertTrue(m3u.text.toString().contains("M3U"))
++        d.dismiss();c.pause().stop().destroy()
++    }
++
+     @Test fun capturesFiveNativeSurfaces() {
+         val c=Robolectric.buildActivity(HomeActivity::class.java).create(); val s=c.get().screen
+         s.provider.testMode=true;c.start().resume().visible();load(s);s.theme=Atlas.ID;s.homeTheme="classic"
+@@ -219,6 +244,11 @@ class AtlasThemeTest {
+         assertEquals(10,logos.size);assertTrue(logos.all{it.drawable!=null && !it.isFocusable})
+         assertTrue(numbers.zip(logos).all{(number,logo)->number.right<logo.left})
+         assertEquals("atlas-drawer-row-0",s.findFocus()?.tag)
++        val drawerStage=drawer.getChildAt(0) as Stage
++        val firstRow=drawerStage.findViewWithTag<View>("atlas-drawer-row-0")
++        val lastRow=drawerStage.findViewWithTag<View>("atlas-drawer-row-9")
++        assertEquals(682,firstRow.width);assertEquals(88,firstRow.height);assertEquals(49,firstRow.left);assertEquals(111,firstRow.top)
++        assertEquals(1027,lastRow.bottom);assertTrue("drawer should use the bottom space",1080-lastRow.bottom<=53)
+         scene.put(still,0,0,1920,1080);drawer.bringToFront()
+         shot(s,"10-channel-drawer-tv");scene.removeView(still)
+         repeat(10){key(a,KeyEvent.KEYCODE_DPAD_DOWN)};layout(s)
+@@ -239,7 +269,7 @@ class AtlasThemeTest {
+         qualityDialog.dismiss();layout(s)
+         quality.requestFocus();key(a,KeyEvent.KEYCODE_DPAD_RIGHT)
+         key(a,KeyEvent.KEYCODE_DPAD_CENTER);layout(s)
+-        assertEquals("السابق",s.findFocus()?.contentDescription)
++        assertEquals("خيارات التشغيل",s.findFocus()?.contentDescription)
+         controls.conceal();controls.reveal()
+         assertSame(channels,s.findFocus())
+         c.pause().stop().destroy()
+diff --git a/app/src/test/java/com/alaa/universe/FullscreenControlsTest.kt b/app/src/test/java/com/alaa/universe/FullscreenControlsTest.kt
+index 6faf409..d054073 100644
+--- a/app/src/test/java/com/alaa/universe/FullscreenControlsTest.kt
++++ b/app/src/test/java/com/alaa/universe/FullscreenControlsTest.kt
+@@ -37,7 +37,7 @@ class FullscreenControlsTest {
+    layout(a.screen);shadowOf(Looper.getMainLooper()).idle()
+    val overlay=all(a.screen).filterIsInstance<FullscreenControls>().single()
+    assertEquals(View.LAYOUT_DIRECTION_LTR,overlay.layoutDirection)
+-   assertEquals(9,all(overlay).filterIsInstance<FullscreenControls.Control>().size)
++   assertEquals(12,all(overlay).filterIsInstance<FullscreenControls.Control>().size)
+    assertFalse(all(overlay).filterIsInstance<TextView>().any{it.text.contains("@total")||it.text.contains("@time")})
+    assertEquals(if(kind=="live")View.INVISIBLE else View.VISIBLE,all(overlay).filterIsInstance<FullscreenControls.Progress>().single().visibility)
+    assertTrue(all(overlay).filterIsInstance<FullscreenControls.Control>().first{it.contentDescription=="Play or pause"}.hasFocus())
+diff --git a/app/src/test/java/com/alaa/universe/PhoneTouchTest.kt b/app/src/test/java/com/alaa/universe/PhoneTouchTest.kt
+index c3fd2fc..9fd9b6b 100644
+--- a/app/src/test/java/com/alaa/universe/PhoneTouchTest.kt
++++ b/app/src/test/java/com/alaa/universe/PhoneTouchTest.kt
+@@ -78,7 +78,7 @@ class PhoneTouchTest {
+     assertEquals(100,button.left);assertEquals(200,button.top);assertEquals(400,button.width);assertEquals(80,button.height)
+  }
+  @Test fun phonePlayerUsesSameNativeControls(){
+-    val p=PlaybackSession(activity,{ProviderRepository(activity)}){}
++    val p=PlaybackSession(activity,{ProviderRepository(activity)},{})
+     var back=false
+     val controls=FullscreenControls(activity,p,MediaEntry("1","Live","c","live"),Harak.GOLD,"Live",false,{back=true},{},{},{false},{})
+     layout(controls)
+diff --git a/app/src/test/java/com/alaa/universe/PlaybackProgressTest.kt b/app/src/test/java/com/alaa/universe/PlaybackProgressTest.kt
+new file mode 100644
+index 0000000..d4e9663
+--- /dev/null
++++ b/app/src/test/java/com/alaa/universe/PlaybackProgressTest.kt
+@@ -0,0 +1,63 @@
++package com.alaa.universe
++
++import org.junit.Assert.*
++import org.junit.Test
++import org.junit.runner.RunWith
++import org.robolectric.RobolectricTestRunner
++import org.robolectric.RuntimeEnvironment
++import org.robolectric.annotation.Config
++
++@RunWith(RobolectricTestRunner::class)
++@Config(sdk=[28])
++class PlaybackProgressTest {
++    @Test fun searchCoversOnlyChannelsMoviesAndSeriesCaseInsensitively() {
++        val items=listOf(
++            MediaEntry("c","Sea News","1","live"),
++            MediaEntry("m1","Sea at Night","1","movie"),
++            MediaEntry("s","Seasons","1","series"),
++            MediaEntry("e","Sea episode","1","episode")
++        )
++        assertEquals(listOf("c","m1","s"),MediaQuickSearch.search(items,"sea").map{it.id})
++        assertEquals("c",MediaQuickSearch.search(items," sea news ").single().id)
++        assertTrue(MediaQuickSearch.search(items," ").isEmpty())
++    }
++
++    @Test fun sortModesAreStableUnknownMetadataIsLastAndLiveOrderIsUntouched() {
++        val items=listOf(
++            MediaEntry("unknown","Unknown","1","movie"),
++            MediaEntry("old","Older","1","movie",releaseYear=2001,addedTimestamp=100,viewCount=5),
++            MediaEntry("new","Newer","1","movie",releaseYear=2024,addedTimestamp=300,viewCount=100),
++            MediaEntry("middle","Middle","1","movie",releaseYear=2018,addedTimestamp=200,viewCount=20)
++        )
++        assertEquals(listOf("new","middle","old","unknown"),MediaSort.sort(items,"movie","year").map{it.id})
++        assertEquals(listOf("new","middle","old","unknown"),MediaSort.sort(items,"movie","newest").map{it.id})
++        assertEquals(listOf("new","middle","old","unknown"),MediaSort.sort(items,"movie","popular").map{it.id})
++        assertEquals(items,MediaSort.sort(items,"live","year"))
++        assertEquals(items,MediaSort.sort(items,"series","default"))
++    }
++
++    @Test fun resumeCheckpointSurvivesRelaunchWithoutStreamUrlsOrCredentials() {
++        val context=RuntimeEnvironment.getApplication()
++        context.getSharedPreferences("playback-progress-v1",0).edit().clear().commit()
++        val first=PlaybackProgressStore(context,"provider/username secret")
++        first.save(MediaEntry("movie-7","A film","12","movie",directUrl="https://user:pass@example.test/film?token=secret"),2_400_000,5_000_000)
++        val reopened=PlaybackProgressStore(context,"provider/username secret")
++        val point=reopened.read()!!
++        assertEquals("movie-7",point.id);assertEquals(2_400_000,point.positionMs)
++        assertEquals("40:00",PlaybackProgressStore.formatTime(point.positionMs))
++        val raw=context.getSharedPreferences("playback-progress-v1",0).all.values.joinToString()
++        assertFalse(raw.contains("example.test"));assertFalse(raw.contains("secret"));assertFalse(raw.contains("pass"))
++        reopened.clear(MediaEntry("different","Other","12","movie"));assertNotNull(reopened.read())
++        reopened.clear(MediaEntry("movie-7","A film","12","movie"));assertNull(reopened.read())
++    }
++
++    @Test fun resumeIsNotRetainedForLiveOrNearCompletedVods() {
++        val context=RuntimeEnvironment.getApplication()
++        context.getSharedPreferences("playback-progress-v1",0).edit().clear().commit()
++        val store=PlaybackProgressStore(context,"scope")
++        store.save(MediaEntry("live","Live","1","live"),50_000,100_000)
++        assertNull(store.read())
++        store.save(MediaEntry("movie","Movie","1","movie"),95_000,100_000)
++        assertNull(store.read())
++    }
++}
+diff --git a/app/src/test/java/com/alaa/universe/ProviderRepositoryTest.kt b/app/src/test/java/com/alaa/universe/ProviderRepositoryTest.kt
+index 8f57bf5..b04ac18 100644
+--- a/app/src/test/java/com/alaa/universe/ProviderRepositoryTest.kt
++++ b/app/src/test/java/com/alaa/universe/ProviderRepositoryTest.kt
+@@ -114,6 +114,23 @@ class ProviderRepositoryTest {
+         repo.clear()
+         assertNull(repo.login())
+     }
++    @Test fun m3uLoginIsEncryptedAndRestoredForAutomaticReopen() {
++        val vault=fixtureVault().also{it.clear()}
++        val playlist="""#EXTM3U
++#EXTINF:-1 group-title="News",Fixture Channel
++https://stream.example.test/live.m3u8?token=fixture-stream-token
++"""
++        val login=ProviderLogin("Fixture M3U","","","","https://playlist.example.test/list.m3u?auth=fixture-login-token")
++        val connected=ProviderRepository(vault){playlist}.connect(login)
++        val file=java.io.File(org.robolectric.RuntimeEnvironment.getApplication().noBackupFilesDir,"provider-v1/state")
++        val disk=file.readBytes().toString(Charsets.ISO_8859_1)
++        assertFalse(disk.contains("fixture-login-token"));assertFalse(disk.contains("fixture-stream-token"))
++        val reopened=ProviderRepository(vault)
++        assertEquals(login,reopened.login())
++        assertEquals(connected,reopened.cached())
++        assertEquals("https://playlist.example.test/list.m3u?auth=fixture-login-token",reopened.login()!!.m3uUrl)
++    }
++
+     @Test fun refreshDoesNotBlockZappingAndClearCancelsPublication() {
+         val vault = fixtureVault().also { it.clear() }
+         val entered = java.util.concurrent.CountDownLatch(1)

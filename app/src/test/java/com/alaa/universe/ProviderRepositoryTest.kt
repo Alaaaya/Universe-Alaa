@@ -16,7 +16,7 @@ class ProviderRepositoryTest {
         assertTrue("Expected thousands of supported HTTPS channels",result.entries.size>1000)
         assertTrue(result.entries.all { it.directUrl.startsWith("https://") })
         assertEquals(result.entries.size,repo.cached()!!.entries.size)
-        java.io.File("/home/kit/universe-Alaa/artifacts/live-public-049.txt").writeText("Real HTTPS connect and encrypted cache roundtrip succeeded; supported HTTPS entries="+result.entries.size)
+        java.io.File("build/test-artifacts/live-public-049.txt").apply{parentFile.mkdirs();writeText("Real HTTPS connect and encrypted cache roundtrip succeeded; supported HTTPS entries="+result.entries.size)}
     }
     @Test fun mixedM3uSkipsUnsupportedInsteadOfRejectingWholeList() {
         val text="#EXTM3U\n#EXTINF:-1,HTTP\nhttp://example.test/live\n#EXTINF:-1,Bad\nudp://224.0.0.1:1234\n#EXTINF:-1,HTTPS\nhttps://example.test/live"
@@ -114,6 +114,23 @@ class ProviderRepositoryTest {
         repo.clear()
         assertNull(repo.login())
     }
+    @Test fun m3uLoginIsEncryptedAndRestoredForAutomaticReopen() {
+        val vault=fixtureVault().also{it.clear()}
+        val playlist="""#EXTM3U
+#EXTINF:-1 group-title="News",Fixture Channel
+https://stream.example.test/live.m3u8?token=fixture-stream-token
+"""
+        val login=ProviderLogin("Fixture M3U","","","","https://playlist.example.test/list.m3u?auth=fixture-login-token")
+        val connected=ProviderRepository(vault){playlist}.connect(login)
+        val file=java.io.File(org.robolectric.RuntimeEnvironment.getApplication().noBackupFilesDir,"provider-v1/state")
+        val disk=file.readBytes().toString(Charsets.ISO_8859_1)
+        assertFalse(disk.contains("fixture-login-token"));assertFalse(disk.contains("fixture-stream-token"))
+        val reopened=ProviderRepository(vault)
+        assertEquals(login,reopened.login())
+        assertEquals(connected,reopened.cached())
+        assertEquals("https://playlist.example.test/list.m3u?auth=fixture-login-token",reopened.login()!!.m3uUrl)
+    }
+
     @Test fun refreshDoesNotBlockZappingAndClearCancelsPublication() {
         val vault = fixtureVault().also { it.clear() }
         val entered = java.util.concurrent.CountDownLatch(1)

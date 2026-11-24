@@ -70,11 +70,12 @@ class FullscreenControls(
         total=label("",1370,930,302,30,22f).apply{gravity=Gravity.RIGHT}
         label(if(live)copy("البث","Broadcast") else copy("الوقت المتبقي","Time left"),1730,873,160,30,21f).setTextColor(0xffbcc3cb.toInt())
         remaining=label(if(live)copy("الآن","Real time") else "—",1730,914,170,44,28f)
-        val specs=listOf("Previous" to "prev","Rewind 10 seconds" to "rewind","Play or pause" to "pause","Forward 10 seconds" to "forward","Next" to "next","Audio" to "audio","Subtitles" to "subs","Favorite" to "heart")
+        val specs=listOf("Previous" to "prev","Rewind 10 seconds" to "rewind","Play or pause" to "pause","Forward 10 seconds" to "forward","Next" to "next","Audio" to "audio","Subtitles" to "subs","Stream quality" to "quality","Playback speed" to "speed","Playback settings" to "gear","Favorite" to "heart")
+        val captions=listOf("السابق","ترجيع ١٠ ثوانٍ","تشغيل أو إيقاف مؤقت","تقديم ١٠ ثوانٍ","التالي","الصوت","الترجمة","الجودة","السرعة","الإعدادات","المفضلة")
         specs.forEachIndexed{i,(name,icon)->
             val size=if(i==2)92 else 74
-            val x=listOf(608,696,784,890,978,1066,1154,1242)[i]
-            val b=control(if(atlas)listOf("السابق","ترجيع ١٠ ثوانٍ","تشغيل أو إيقاف مؤقت","تقديم ١٠ ثوانٍ","التالي","الصوت","الترجمة","المفضلة")[i] else name,icon,x,if(i==2)969 else 978,size){
+            val x=listOf(432,520,608,714,802,890,978,1066,1154,1242,1330)[i]
+            val b=control(if(atlas)captions[i] else name,icon,x,if(i==2)969 else 978,size){
                 when(i){
                     0->previous()
                     1->session.player?.seekBack()
@@ -83,11 +84,15 @@ class FullscreenControls(
                     4->next()
                     5->session.tracks(C.TRACK_TYPE_AUDIO)
                     6->session.tracks(C.TRACK_TYPE_TEXT)
-                    7->{isFavorite=toggleFavorite();heart.selectedIcon=isFavorite}
+                    7->session.tracks(C.TRACK_TYPE_VIDEO)
+                    8->session.speedMenu()
+                    9->session.moreMenu()
+                    10->{isFavorite=toggleFavorite();heart.selectedIcon=isFavorite}
                 };show();update()
             }
             if(i==2){pause=b;b.primary=true}
-            if(i==7){heart=b;b.selectedIcon=isFavorite}
+            if(i==10){heart=b;b.selectedIcon=isFavorite}
+            if(live && i in listOf(5,6,8)){b.visibility=View.GONE;b.isFocusable=false;b.isEnabled=false}
             if(live && (i==1||i==3)){b.isEnabled=false;b.isFocusable=false;b.alpha=.28f}
         }
         back.tag="universe-back"
@@ -144,7 +149,7 @@ class FullscreenControls(
         heart.visibility=View.VISIBLE;heart.isFocusable=true;heart.isFocusableInTouchMode=!PhoneInput.enabled(context);heart.alpha=1f
         heart.bringToFront();heart.tag="atlas-player-favorite"
         val quality=control("الجودة","hd",1560,850,125){show();session.tracks(C.TRACK_TYPE_VIDEO)}.apply{tag="atlas-player-quality"}
-        val more=control("خيارات التشغيل","gear",1715,850,125){toggleAtlasTransport()}.apply{tag="atlas-player-more"}
+        val more=control("خيارات التشغيل","gear",1715,850,125){session.moreMenu();show()}.apply{tag="atlas-player-more"}
         val row=listOf(channels,heart,quality,more)
         row.forEachIndexed { i,v ->
             stage.place(v,1250+i*154,851,144,147)
@@ -156,18 +161,7 @@ class FullscreenControls(
             if(i in 1..3)rule(1245+i*154,927,51)
         }
         back.bringToFront();back.nextFocusDownId=channels.id
-        val panel=View(context).apply{background=Atlas.shape(0xf5121215.toInt(),24f,0xff816744.toInt(),1);visibility=View.GONE}
-        stage.put(panel,774,677,1074,137);atlasTransportPanel=panel
-        val transport=original.filterIsInstance<Control>().filter{it!==back && it!==heart && it.isEnabled}
-        atlasTransport=transport
-        transport.forEachIndexed{i,v->
-            v.bringToFront();stage.place(v,798+i*207,691,195,108)
-            v.goldStyle=true
-            v.dockLabel=listOf("القناة السابقة","تشغيل / إيقاف","القناة التالية","الصوت","الترجمة")[i]
-            v.nextFocusLeftId=transport.getOrNull(i-1)?.id?:v.id
-            v.nextFocusRightId=transport.getOrNull(i+1)?.id?:v.id
-            v.nextFocusUpId=back.id;v.nextFocusDownId=more.id
-        }
+
     }
 
     private fun toggleAtlasTransport(){

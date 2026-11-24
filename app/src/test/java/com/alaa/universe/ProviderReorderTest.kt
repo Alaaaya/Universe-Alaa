@@ -36,9 +36,16 @@ class ProviderReorderTest {
     private fun down(s:UniverseScreen,key:Int=23,repeat:Int=0,flags:Int=0)=s.dispatchKeyEvent(KeyEvent(1,2,KeyEvent.ACTION_DOWN,key,repeat,0,0,0,flags))
     private fun up(s:UniverseScreen,key:Int=23,flags:Int=0)=s.dispatchKeyEvent(KeyEvent(1,3,KeyEvent.ACTION_UP,key,0,0,0,0,flags))
     private fun tap(s:UniverseScreen,key:Int=23){down(s,key);up(s,key)}
+    private fun menuDialog():android.app.AlertDialog {
+        shadowOf(Looper.getMainLooper()).idle()
+        val dialog=org.robolectric.shadows.ShadowDialog.getShownDialogs()
+            .filterIsInstance<android.app.AlertDialog>()
+            .lastOrNull{it.isShowing && it.listView!=null}
+        assertNotNull("expected a visible item menu",dialog)
+        return dialog!!
+    }
     private fun chooseMenu(index:Int){
-        val dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
-        assertNotNull(dialog);assertTrue(dialog.isShowing)
+        val dialog=menuDialog()
         dialog.listView.performItemClick(dialog.listView.getChildAt(index),index,index.toLong())
         dialog.dismiss()
     }
@@ -160,14 +167,14 @@ class ProviderReorderTest {
 
     @Test fun longPressMenuOffersMoveAndFavoriteToggleAndCategoryMoveOnly()=scenario{s,p->
         enterCategory(s);openMenu(s,"Channel 1-2")
-        var dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
+        var dialog=menuDialog()
         assertEquals("نقل",dialog.listView.adapter.getItem(0))
         assertEquals("أضف إلى المفضلة",dialog.listView.adapter.getItem(1))
         assertNull(p.playback.entry);chooseMenu(1)
-        openMenu(s,"Channel 1-2");dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
+        openMenu(s,"Channel 1-2");dialog=menuDialog()
         assertEquals("احذف من المفضلة",dialog.listView.adapter.getItem(1));dialog.cancel()
         s.categories();openMenu(s,"live category 1")
-        assertEquals(1,org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog().listView.adapter.count)
+        assertEquals(1,menuDialog().listView.adapter.count)
         chooseMenu(0);tap(s,4);assertEquals("categories",s.page)
     }
     private fun showFavorites(s:UniverseScreen){s.categories();row(s,"Favorites").requestFocus();tap(s)}
@@ -208,7 +215,7 @@ class ProviderReorderTest {
     @Test fun dialogConsumesOpeningHoldRepeatsAndReleaseWithoutSelectingMenu()=scenario{s,p->
         enterCategory(s);row(s,"Channel 1-2").requestFocus();down(s)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(ViewConfiguration.getLongPressTimeout().toLong()+1))
-        val dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
+        val dialog=menuDialog()
         assertTrue(dialog.isShowing)
         assertTrue(dialog.dispatchKeyEvent(KeyEvent(1,2,KeyEvent.ACTION_DOWN,23,2,0,0,0,KeyEvent.FLAG_LONG_PRESS)))
         assertTrue(dialog.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP,23)))
